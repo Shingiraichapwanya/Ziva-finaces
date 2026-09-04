@@ -1,0 +1,7 @@
+﻿node_modules/
+*.log
+.DS_Store
+scripts/test_slack_tx.json
+scripts/test_tax_tx.json
+dist/
+.vite/

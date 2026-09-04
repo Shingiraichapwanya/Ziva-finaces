@@ -1,0 +1,4 @@
+{"currency_code":"ZAR","currency_name":"South African Rand","country_code":"ZA","symbol":"R","decimal_places":2,"is_active":true,"notes":"Legal tender in South Africa and Common Monetary Area"}
+{"currency_code":"USD","currency_name":"United States Dollar","country_code":"US","symbol":"$","decimal_places":2,"is_active":true,"notes":"Dominant currency for pricing and Nostro FCA accounts in Zimbabwe"}
+{"currency_code":"ZiG","currency_name":"Zimbabwe Gold","country_code":"ZW","symbol":"ZiG","decimal_places":2,"is_active":true,"notes":"Structured currency backed by gold and foreign reserves introduced April 2024"}
+{"currency_code":"ZWL","currency_name":"Zimbabwean Dollar (Historical)","country_code":"ZW","symbol":"ZWL$","decimal_places":2,"is_active":false,"notes":"Decommissioned predecessor to ZiG"}
