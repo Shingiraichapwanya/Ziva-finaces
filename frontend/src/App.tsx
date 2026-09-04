@@ -23,6 +23,7 @@ import {
   INITIAL_INVESTMENTS
 } from './services/mockData';
 import { DEFAULT_RATES } from './services/currency';
+import { financeApi } from './services/api';
 
 export function App() {
   // Master Currency State (Persisted in localStorage)
@@ -45,8 +46,42 @@ export function App() {
   const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
   const [taxSchedule, setTaxSchedule] = useState(INITIAL_TAX_SCHEDULE);
   const [burnMetrics, setBurnMetrics] = useState(INITIAL_BURN_METRICS);
-  const [rates] = useState(DEFAULT_RATES);
-  const [isOnline] = useState(true);
+  const [rates, setRates] = useState(DEFAULT_RATES);
+  const [isOnline, setIsOnline] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Live BigQuery Hydration
+  const fetchLiveData = async () => {
+    setIsRefreshing(true);
+    try {
+      await financeApi.checkHealth();
+      
+      const [liveRates, liveAccounts, liveTxs, liveEnvelopes, liveTax] = await Promise.allSettled([
+        financeApi.getExchangeRates(),
+        financeApi.getAccounts(),
+        financeApi.getTransactions(100),
+        financeApi.getBudgetEnvelopes(),
+        financeApi.getTaxSchedule()
+      ]);
+
+      if (liveRates.status === 'fulfilled') setRates(liveRates.value);
+      if (liveAccounts.status === 'fulfilled' && liveAccounts.value.length > 0) setAccounts(liveAccounts.value);
+      if (liveTxs.status === 'fulfilled' && liveTxs.value.length > 0) setTransactions(liveTxs.value);
+      if (liveEnvelopes.status === 'fulfilled' && liveEnvelopes.value.length > 0) setEnvelopes(liveEnvelopes.value);
+      if (liveTax.status === 'fulfilled' && liveTax.value) setTaxSchedule(liveTax.value);
+
+      setIsOnline(true);
+    } catch (err) {
+      console.warn('BigQuery backend unreachable, operating in offline/demo mode:', err);
+      setIsOnline(false);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveData();
+  }, []);
 
   // Receipt Modal State
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -109,10 +144,17 @@ export function App() {
         };
       });
     }
+
+    // 4. If online, asynchronously persist transaction to BigQuery
+    if (isOnline) {
+      financeApi.createTransaction(newTx).catch((err) => {
+        console.warn('Could not write transaction to BigQuery, keeping local copy:', err);
+      });
+    }
   };
 
   const handleManualSync = () => {
-    alert('Simulating Delta Sync with BigQuery dataset personal_finance (africa-south1)... All 6 fact tables verified up-to-date.');
+    fetchLiveData();
   };
 
   return (
@@ -128,6 +170,8 @@ export function App() {
           rates={rates}
           isOnline={isOnline}
           onOpenReceiptModal={() => setIsReceiptModalOpen(true)}
+          onRefresh={fetchLiveData}
+          isRefreshing={isRefreshing}
         />
 
         <main className="page-body">

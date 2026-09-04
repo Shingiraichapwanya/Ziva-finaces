@@ -8,6 +8,8 @@ interface TopBarProps {
   rates: ExchangeRates;
   isOnline: boolean;
   onOpenReceiptModal: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -15,7 +17,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSelectCurrency,
   rates,
   isOnline,
-  onOpenReceiptModal
+  onOpenReceiptModal,
+  onRefresh,
+  isRefreshing
 }) => {
   return (
     <header className="topbar">
@@ -81,11 +85,25 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         {/* Sync Status Badge */}
-        <div className="sync-status-badge" title="BigQuery Region: africa-south1 (Johannesburg)">
+        <div className="sync-status-badge" title="BigQuery Project: budget-tracker-507418, Region: africa-south1">
           <span className={`status-dot ${isOnline ? 'online pulse-live' : 'offline'}`} />
-          <ShieldCheck size={14} className="text-emerald" />
-          <span>{isOnline ? 'BigQuery Synced' : 'Offline Mode'}</span>
+          <ShieldCheck size={14} className={isOnline ? "text-emerald" : "text-gold"} />
+          <span>{isOnline ? 'BigQuery Live' : 'Demo Mode'}</span>
         </div>
+
+        {/* Manual Refresh Action */}
+        {onRefresh && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-icon-only"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            title="Refresh live data from BigQuery"
+            style={{ padding: '0.45rem', display: 'flex', alignItems: 'center' }}
+          >
+            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+          </button>
+        )}
 
         {/* Scan Receipt Quick Action */}
         <button

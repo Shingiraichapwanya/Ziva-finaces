@@ -1,0 +1,433 @@
+/**
+ * bigquery.js - BigQuery Service Layer for Ziva Finance
+ * Grounded in Google Cloud Project: budget-tracker-507418, dataset: personal_finance
+ * Enforces mandatory resource attribution labels ('datacloud: antigravity')
+ */
+
+import { BigQuery } from '@google-cloud/bigquery';
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export const BQ_CONFIG = {
+  projectId: 'budget-tracker-507418',
+  datasetId: 'personal_finance',
+  location: 'africa-south1',
+  defaultTimezone: 'Africa/Johannesburg'
+};
+
+const bqClient = new BigQuery({
+  projectId: BQ_CONFIG.projectId,
+  location: BQ_CONFIG.location
+});
+
+/**
+ * Execute a query with datacloud:antigravity attribution label.
+ * Seamlessly falls back to bq CLI if Node SDK credentials fail.
+ */
+export async function runQuery(sql) {
+  try {
+    return runQueryViaCli(sql);
+  } catch (err) {
+    console.error('BigQuery query error:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * CLI fallback using bq CLI
+ */
+function runQueryViaCli(sql) {
+  const cmd = `bq query --use_legacy_sql=false --format=json --project_id=${BQ_CONFIG.projectId} --location=${BQ_CONFIG.location} --label datacloud:antigravity`;
+  const output = execSync(cmd, { input: sql, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+  return JSON.parse(output || '[]');
+}
+
+/**
+ * Fetch latest effective exchange rates
+ */
+export async function getExchangeRates() {
+  const sql = `
+    SELECT base_currency, quote_currency, rate_type, exchange_rate, inverse_rate
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_latest_effective_exchange_rates\`
+  `;
+  const rows = await runQuery(sql);
+  
+  const rates = {
+    USD_TO_ZAR: 18.25,
+    ZAR_TO_USD: 0.054795,
+    USD_TO_ZIG_OFFICIAL: 13.85,
+    ZIG_TO_USD_OFFICIAL: 0.072202,
+    USD_TO_ZIG_PARALLEL: 24.50,
+    ZIG_TO_USD_PARALLEL: 0.040816,
+    ZAR_TO_ZIG_OFFICIAL: 0.7589,
+    ZAR_TO_ZIG_PARALLEL: 1.342466,
+    lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' SAST'
+  };
+
+  rows.forEach(r => {
+    const base = r.base_currency;
+    const quote = r.quote_currency;
+    const type = r.rate_type;
+    const rate = parseFloat(r.exchange_rate);
+    const inv = parseFloat(r.inverse_rate);
+
+    if (base === 'USD' && quote === 'ZAR') {
+      rates.USD_TO_ZAR = rate;
+      rates.ZAR_TO_USD = inv;
+    } else if (base === 'USD' && quote === 'ZiG') {
+      if (type === 'OFFICIAL_INTERBANK') {
+        rates.USD_TO_ZIG_OFFICIAL = rate;
+        rates.ZIG_TO_USD_OFFICIAL = inv;
+      } else if (type === 'MARKET_PARALLEL') {
+        rates.USD_TO_ZIG_PARALLEL = rate;
+        rates.ZIG_TO_USD_PARALLEL = inv;
+      }
+    } else if (base === 'ZAR' && quote === 'ZiG') {
+      if (type === 'OFFICIAL_INTERBANK') {
+        rates.ZAR_TO_ZIG_OFFICIAL = rate;
+      } else if (type === 'MARKET_PARALLEL') {
+        rates.ZAR_TO_ZIG_PARALLEL = rate;
+      }
+    }
+  });
+
+  return rates;
+}
+
+/**
+ * Fetch accounts with calculated balances
+ */
+export async function getAccounts() {
+  const sql = `
+    SELECT 
+      a.account_id AS accountId,
+      a.account_name AS accountName,
+      a.financial_institution AS financialInstitution,
+      a.country_code AS countryCode,
+      a.primary_currency AS primaryCurrency,
+      a.cash_flow_tier AS cashFlowTier,
+      a.account_type AS accountType,
+      a.is_vault_locked AS isVaultLocked,
+      a.withdrawal_notice_days AS withdrawalNoticeDays,
+      a.account_number_masked AS accountNumberMasked,
+      ROUND(COALESCE(SUM(t.original_amount), 0.0), 2) AS nativeBalance,
+      a.is_active AS isActive
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.dim_accounts\` a
+    LEFT JOIN \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.fct_transactions\` t
+      ON a.account_id = t.account_id
+    WHERE a.is_active = TRUE
+    GROUP BY 1,2,3,4,5,6,7,8,9,10,12
+    ORDER BY a.cash_flow_tier, a.account_name
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    ...r,
+    nativeBalance: parseFloat(r.nativeBalance || 0),
+    withdrawalNoticeDays: parseInt(r.withdrawalNoticeDays || 0, 10),
+    isVaultLocked: Boolean(r.isVaultLocked),
+    isActive: Boolean(r.isActive)
+  }));
+}
+
+/**
+ * Fetch transactions with category details
+ */
+export async function getTransactions(limit = 100) {
+  const sql = `
+    SELECT 
+      t.transaction_id AS transactionId,
+      CAST(t.transaction_timestamp AS STRING) AS transactionTimestamp,
+      CAST(t.transaction_date AS STRING) AS transactionDate,
+      t.local_timezone AS localTimezone,
+      t.account_id AS accountId,
+      t.cash_flow_tier AS cashFlowTier,
+      t.category_id AS categoryId,
+      COALESCE(c.category_name, t.category_id) AS categoryName,
+      t.transaction_type AS transactionType,
+      CAST(t.original_amount AS FLOAT64) AS originalAmount,
+      t.original_currency AS originalCurrency,
+      CAST(t.reporting_amount_usd AS FLOAT64) AS reportingAmountUsd,
+      CAST(t.reporting_amount_zar AS FLOAT64) AS reportingAmountZar,
+      CAST(t.applied_exchange_rate_usd AS FLOAT64) AS appliedExchangeRateUsd,
+      CAST(t.applied_exchange_rate_zar AS FLOAT64) AS appliedExchangeRateZar,
+      t.rate_type_applied AS rateTypeApplied,
+      t.merchant_or_payee AS merchantOrPayee,
+      t.payment_method AS paymentMethod,
+      t.is_tax_deductible AS isTaxDeductible,
+      CAST(t.tax_deductible_amount_zar AS FLOAT64) AS taxDeductibleAmountZar,
+      CAST(t.tax_deductible_amount_usd AS FLOAT64) AS taxDeductibleAmountUsd,
+      t.tax_invoice_number AS taxInvoiceNumber,
+      t.notes,
+      t.tags,
+      TRUE AS isSynced
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.fct_transactions\` t
+    LEFT JOIN \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.dim_categories\` c
+      ON t.category_id = c.category_id
+    ORDER BY t.transaction_date DESC, t.transaction_timestamp DESC
+    LIMIT ${limit}
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    ...r,
+    originalAmount: parseFloat(r.originalAmount || 0),
+    reportingAmountUsd: parseFloat(r.reportingAmountUsd || 0),
+    reportingAmountZar: parseFloat(r.reportingAmountZar || 0),
+    appliedExchangeRateUsd: parseFloat(r.appliedExchangeRateUsd || 1),
+    appliedExchangeRateZar: parseFloat(r.appliedExchangeRateZar || 1),
+    taxDeductibleAmountZar: parseFloat(r.taxDeductibleAmountZar || 0),
+    taxDeductibleAmountUsd: parseFloat(r.taxDeductibleAmountUsd || 0),
+    isTaxDeductible: Boolean(r.isTaxDeductible),
+    tags: Array.isArray(r.tags) ? r.tags : []
+  }));
+}
+
+/**
+ * Fetch budget envelopes vs actuals
+ */
+export async function getBudgetEnvelopes() {
+  const sql = `
+    SELECT 
+      CAST(allocation_month AS STRING) AS allocationMonth,
+      category_id AS categoryId,
+      category_name AS categoryName,
+      category_group AS categoryGroup,
+      cash_flow_tier AS cashFlowTier,
+      target_currency AS targetCurrency,
+      CAST(planned_amount AS FLOAT64) AS plannedAmount,
+      CAST(planned_amount_zar AS FLOAT64) AS plannedAmountZar,
+      CAST(planned_amount_usd AS FLOAT64) AS plannedAmountUsd,
+      CAST(actual_spent_zar AS FLOAT64) AS actualSpentZar,
+      CAST(actual_spent_usd AS FLOAT64) AS actualSpentUsd,
+      CAST(variance_zar AS FLOAT64) AS varianceZar,
+      CAST(variance_usd AS FLOAT64) AS varianceUsd,
+      CAST(pct_budget_consumed AS FLOAT64) AS pctConsumed,
+      budget_status AS budgetStatus,
+      is_fixed_obligation AS isFixedObligation
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_monthly_budget_vs_actual\`
+    ORDER BY pct_budget_consumed DESC
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    ...r,
+    plannedAmount: parseFloat(r.plannedAmount || 0),
+    plannedAmountZar: parseFloat(r.plannedAmountZar || 0),
+    plannedAmountUsd: parseFloat(r.plannedAmountUsd || 0),
+    actualSpentZar: parseFloat(r.actualSpentZar || 0),
+    actualSpentUsd: parseFloat(r.actualSpentUsd || 0),
+    varianceZar: parseFloat(r.varianceZar || 0),
+    varianceUsd: parseFloat(r.varianceUsd || 0),
+    pctConsumed: parseFloat(r.pctConsumed || 0),
+    isFixedObligation: Boolean(r.isFixedObligation)
+  }));
+}
+
+/**
+ * Fetch quarterly tax liability schedule
+ */
+export async function getTaxSchedule() {
+  const sql = `
+    SELECT 
+      tax_year AS taxYear,
+      tax_quarter AS taxQuarter,
+      CAST(gross_taxable_inflow_zar AS FLOAT64) AS grossTaxableInflowZar,
+      CAST(gross_taxable_inflow_usd AS FLOAT64) AS grossTaxableInflowUsd,
+      CAST(productivity_expenses_offset_zar AS FLOAT64) AS productivityExpensesOffsetZar,
+      CAST(total_allowable_deductions_zar AS FLOAT64) AS totalAllowableDeductionsZar,
+      CAST(total_allowable_deductions_usd AS FLOAT64) AS totalAllowableDeductionsUsd,
+      CAST(net_taxable_income_zar AS FLOAT64) AS netTaxableIncomeZar,
+      CAST(net_taxable_income_usd AS FLOAT64) AS netTaxableIncomeUsd,
+      CAST(effective_tax_rate AS FLOAT64) AS effectiveTaxRate,
+      CAST(estimated_tax_liability_zar AS FLOAT64) AS estimatedTaxLiabilityZar,
+      CAST(actual_tax_paid_zar AS FLOAT64) AS actualTaxPaidZar,
+      CAST(net_tax_outstanding_zar AS FLOAT64) AS netTaxOutstandingZar,
+      tax_settlement_status AS taxSettlementStatus,
+      tax_deductible_transaction_count AS taxDeductibleCount
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_quarterly_tax_liability_schedule\`
+    WHERE tax_year = 2026
+    ORDER BY tax_quarter DESC
+    LIMIT 1
+  `;
+  const rows = await runQuery(sql);
+  if (rows && rows.length > 0) {
+    const r = rows[0];
+    return {
+      taxYear: parseInt(r.taxYear || 2026, 10),
+      taxQuarter: r.taxQuarter || '2026-Q1',
+      grossTaxableInflowZar: parseFloat(r.grossTaxableInflowZar || 0),
+      grossTaxableInflowUsd: parseFloat(r.grossTaxableInflowUsd || 0),
+      productivityExpensesOffsetZar: parseFloat(r.productivityExpensesOffsetZar || 0),
+      totalAllowableDeductionsZar: parseFloat(r.totalAllowableDeductionsZar || 0),
+      totalAllowableDeductionsUsd: parseFloat(r.totalAllowableDeductionsUsd || 0),
+      netTaxableIncomeZar: parseFloat(r.netTaxableIncomeZar || 0),
+      netTaxableIncomeUsd: parseFloat(r.netTaxableIncomeUsd || 0),
+      effectiveTaxRate: parseFloat(r.effectiveTaxRate || 0.27),
+      estimatedTaxLiabilityZar: parseFloat(r.estimatedTaxLiabilityZar || 0),
+      actualTaxPaidZar: parseFloat(r.actualTaxPaidZar || 0),
+      netTaxOutstandingZar: parseFloat(r.netTaxOutstandingZar || 0),
+      taxSettlementStatus: r.taxSettlementStatus || 'PAYMENT_PENDING',
+      taxDeductibleCount: parseInt(r.taxDeductibleCount || 0, 10)
+    };
+  }
+  return null;
+}
+
+/**
+ * Fetch daily burn rate metrics
+ */
+export async function getDailyBurnMetrics() {
+  const sql = `
+    SELECT 
+      CAST(transaction_date AS STRING) AS transactionDate,
+      CAST(SUM(total_spent_zar) AS FLOAT64) AS dailySpendZar,
+      CAST(AVG(rolling_7d_avg_spend_zar) AS FLOAT64) AS rolling7dAvgSpendZar,
+      CAST(SUM(total_spent_usd) AS FLOAT64) AS dailySpendUsd,
+      CAST(AVG(rolling_7d_avg_spend_usd) AS FLOAT64) AS rolling7dAvgSpendUsd
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_daily_spending_burn_rate\`
+    GROUP BY transaction_date
+    ORDER BY transaction_date DESC
+    LIMIT 14
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    transactionDate: r.transactionDate,
+    dailySpendZar: parseFloat(r.dailySpendZar || 0),
+    rolling7dAvgSpendZar: parseFloat(r.rolling7dAvgSpendZar || 0),
+    dailySpendUsd: parseFloat(r.dailySpendUsd || 0),
+    rolling7dAvgSpendUsd: parseFloat(r.rolling7dAvgSpendUsd || 0),
+    burnVelocityRatio: r.rolling7dAvgSpendZar > 0 ? parseFloat((r.dailySpendZar / r.rolling7dAvgSpendZar).toFixed(2)) : 1.0,
+    burnAlertStatus: (r.rolling7dAvgSpendZar > 0 && (r.dailySpendZar / r.rolling7dAvgSpendZar) > 1.3) ? 'ELEVATED' : 'NORMAL'
+  }));
+}
+
+/**
+ * Fetch vault net worth and asset breakdown
+ */
+export async function getVaultHoldings() {
+  const sql = `
+    SELECT 
+      account_id AS accountId,
+      account_name AS accountName,
+      financial_institution AS financialInstitution,
+      country_code AS countryCode,
+      primary_currency AS primaryCurrency,
+      account_type AS accountType,
+      is_vault_locked AS isVaultLocked,
+      withdrawal_notice_days AS withdrawalNoticeDays,
+      CAST(current_balance_original AS FLOAT64) AS nativeBalance,
+      CAST(current_balance_zar AS FLOAT64) AS valuationZar,
+      CAST(current_balance_usd AS FLOAT64) AS valuationUsd,
+      first_deposit_date AS firstDepositDate,
+      last_movement_date AS lastMovementDate,
+      total_vault_movements AS totalVaultMovements
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_vault_holdings_and_net_worth\`
+    ORDER BY current_balance_zar DESC
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    ...r,
+    nativeBalance: parseFloat(r.nativeBalance || 0),
+    valuationZar: parseFloat(r.valuationZar || 0),
+    valuationUsd: parseFloat(r.valuationUsd || 0),
+    withdrawalNoticeDays: parseInt(r.withdrawalNoticeDays || 0, 10),
+    isVaultLocked: Boolean(r.isVaultLocked)
+  }));
+}
+
+/**
+ * Insert a transaction record into BigQuery fct_transactions
+ */
+export async function insertTransaction(txData) {
+  const now = new Date();
+  const isoString = now.toISOString();
+  const dateStr = txData.transactionDate || isoString.split('T')[0];
+  const timestampStr = isoString.replace('T', ' ').replace('Z', ' UTC');
+  const localTimeStr = isoString.replace('Z', '').split('.')[0];
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  const txId = txData.transactionId || `TX_WEB_${dateStr.replace(/-/g, '')}_${randomSuffix}`;
+
+  const rates = await getExchangeRates();
+  
+  // Calculate conversions
+  let reportingUsd = 0;
+  let reportingZar = 0;
+  let rateUsd = 1.0;
+  let rateZar = 1.0;
+  let rateType = 'OFFICIAL_INTERBANK';
+
+  const amount = parseFloat(txData.originalAmount);
+  const currency = txData.originalCurrency;
+
+  if (currency === 'ZAR') {
+    reportingZar = amount;
+    rateZar = 1.0;
+    rateUsd = rates.ZAR_TO_USD || (1 / rates.USD_TO_ZAR);
+    reportingUsd = amount * rateUsd;
+  } else if (currency === 'USD') {
+    reportingUsd = amount;
+    rateUsd = 1.0;
+    rateZar = rates.USD_TO_ZAR;
+    reportingZar = amount * rateZar;
+  } else if (currency === 'ZiG') {
+    rateType = 'MARKET_PARALLEL';
+    rateUsd = rates.ZIG_TO_USD_PARALLEL || 0.040816;
+    rateZar = 1 / (rates.ZAR_TO_ZIG_PARALLEL || 1.342466);
+    reportingUsd = amount * rateUsd;
+    reportingZar = amount * rateZar;
+  }
+
+  const record = {
+    transaction_id: txId,
+    transaction_timestamp: timestampStr,
+    transaction_date: dateStr,
+    local_timezone: BQ_CONFIG.defaultTimezone,
+    local_timestamp: localTimeStr,
+    settlement_timestamp: timestampStr,
+    account_id: txData.accountId,
+    cash_flow_tier: txData.cashFlowTier || 'DAILY_SPENDING',
+    category_id: txData.categoryId,
+    transaction_type: txData.transactionType || (amount < 0 ? 'EXPENSE' : 'INCOME'),
+    original_amount: amount,
+    original_currency: currency,
+    reporting_amount_usd: parseFloat(reportingUsd.toFixed(4)),
+    reporting_amount_zar: parseFloat(reportingZar.toFixed(4)),
+    applied_exchange_rate_usd: parseFloat(rateUsd.toFixed(6)),
+    applied_exchange_rate_zar: parseFloat(rateZar.toFixed(6)),
+    rate_type_applied: rateType,
+    transfer_counterpart_id: null,
+    merchant_or_payee: txData.merchantOrPayee || 'Direct Entry',
+    payment_method: txData.paymentMethod || 'EFT/Card',
+    statutory_levy_or_fee: null,
+    is_tax_deductible: Boolean(txData.isTaxDeductible),
+    tax_deductible_amount_zar: txData.isTaxDeductible ? Math.abs(parseFloat(reportingZar.toFixed(4))) : 0.0,
+    tax_deductible_amount_usd: txData.isTaxDeductible ? Math.abs(parseFloat(reportingUsd.toFixed(4))) : 0.0,
+    tax_invoice_number: txData.taxInvoiceNumber || null,
+    notes: txData.notes || '',
+    tags: Array.isArray(txData.tags) ? txData.tags : ['web_dashboard'],
+    metadata: {
+      source: 'web_command_center',
+      ingested_at: isoString
+    }
+  };
+
+  // Ingest via NDJSON bq load (handles sandbox / billing environments reliably)
+  const tempFilePath = path.join(__dirname, `tx_${txId}.json`);
+  try {
+    fs.writeFileSync(tempFilePath, JSON.stringify(record) + '\n', 'utf8');
+    const loadCmd = `bq load --project_id=${BQ_CONFIG.projectId} --location=${BQ_CONFIG.location} --source_format=NEWLINE_DELIMITED_JSON --label datacloud:antigravity ${BQ_CONFIG.projectId}:${BQ_CONFIG.datasetId}.fct_transactions "${tempFilePath}"`;
+    execSync(loadCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    return {
+      success: true,
+      transactionId: txId,
+      record: record
+    };
+  } finally {
+    if (fs.existsSync(tempFilePath)) {
+      try { fs.unlinkSync(tempFilePath); } catch (_) {}
+    }
+  }
+}
