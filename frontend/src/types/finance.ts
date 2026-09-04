@@ -164,3 +164,93 @@ export interface InvestmentCounter {
     disclaimer: string;
   };
 }
+
+export interface IncomeStatementPeriod {
+  periodType: 'MONTH' | 'QUARTER';
+  statementPeriod: string; // e.g. '2026-09' or '2026-Q3'
+  periodStartDate: string;
+  periodEndDate: string;
+  grossOperatingRevenueZar: number;
+  operatingExpensesZar: number;
+  netOperatingIncomeZar: number;
+  operatingMarginPct: number;
+  livingEssentialsZar: number;
+  discretionaryExpensesZar: number;
+  statutoryAndDebtZar: number;
+  totalComprehensiveOutflowsZar: number;
+  netCashSurplusZar: number;
+  savingsRatePct: number;
+  vaultContributionsZar: number;
+  grossOperatingRevenueUsd: number;
+  operatingExpensesUsd: number;
+  netOperatingIncomeUsd: number;
+  livingEssentialsUsd: number;
+  discretionaryExpensesUsd: number;
+  statutoryAndDebtUsd: number;
+  netCashSurplusUsd: number;
+  vaultContributionsUsd: number;
+}
+
+export interface NonOperatingGainRecord {
+  accountId: string;
+  accountName: string;
+  financialInstitution: string;
+  countryCode: string;
+  primaryCurrency: CurrencyCode;
+  accountType: string;
+  withdrawalNoticeDays: number;
+  currentVaultBalanceNative: number;
+  currentVaultBalanceZar: number;
+  currentVaultBalanceUsd: number;
+  gainClassification: string;
+  annualizedYieldPct: number;
+  monthlyProjectedGainZar: number;
+  monthlyProjectedGainUsd: number;
+}
+
+export interface SpendHabitBreakdown {
+  categoryGroup: string;
+  categoryName: string;
+  iconName?: string;
+  transactionCount: number;
+  totalSpentZar: number;
+  totalSpentUsd: number;
+  pctOfTotalSpend: number;
+}
+
+export interface MonthlyTrendData {
+  statementPeriod: string;
+  periodStartDate: string;
+  operatingRevenueZar: number;
+  operatingRevenueUsd: number;
+  totalOutflowsZar: number;
+  netSurplusZar: number;
+  netSurplusUsd: number;
+  savingsRatePct: number;
+  operatingMarginPct: number;
+}
+
+export interface PerformanceKPIs {
+  savingsRatePct: number;
+  operatingMarginPct: number;
+  rolling7dAvgSpendZar: number;
+  rolling7dAvgSpendUsd: number;
+  latestDailySpendZar: number;
+  burnAlertStatus: 'NORMAL' | 'ELEVATED' | 'CRITICAL';
+  burnVelocityRatio: number;
+  netCashSurplusZar: number;
+  netCashSurplusUsd: number;
+  grossOperatingRevenueZar: number;
+  grossOperatingRevenueUsd: number;
+  monthlyProjectedGainZar: number;
+  monthlyProjectedGainUsd: number;
+}
+
+export interface PerformanceSummary {
+  kpis: PerformanceKPIs;
+  spendHabits: SpendHabitBreakdown[];
+  monthlyTrends: MonthlyTrendData[];
+  statements: IncomeStatementPeriod[];
+  nonOperatingGains: NonOperatingGainRecord[];
+}
+

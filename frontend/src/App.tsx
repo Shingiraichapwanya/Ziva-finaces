@@ -9,6 +9,7 @@ import { TransactionsView } from './components/ledger/TransactionsView';
 import { BudgetsView } from './components/budgets/BudgetsView';
 import { TaxView } from './components/tax/TaxView';
 import { WealthManagementView } from './components/wealth/WealthManagementView';
+import { AnalyticsView } from './components/analytics/AnalyticsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { ReceiptScanModal } from './components/sync/ReceiptScanModal';
 import { GeminiCopilotDrawer } from './components/copilot/GeminiCopilotDrawer';
@@ -244,6 +245,13 @@ export function App() {
               taxOpportunities={INITIAL_TAX_SHIELD_OPPORTUNITIES}
               arbitrageSignals={INITIAL_ARBITRAGE_SIGNALS}
               investments={INITIAL_INVESTMENTS}
+              masterCurrency={masterCurrency}
+              rates={rates}
+            />
+          )}
+
+          {currentTab === 'analytics' && (
+            <AnalyticsView
               masterCurrency={masterCurrency}
               rates={rates}
             />

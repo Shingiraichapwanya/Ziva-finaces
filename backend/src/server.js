@@ -14,7 +14,10 @@ import {
   getTaxSchedule,
   getDailyBurnMetrics,
   getVaultHoldings,
-  insertTransaction
+  insertTransaction,
+  getIncomeStatements,
+  getNonOperatingGains,
+  getPerformanceSummary
 } from './bigquery.js';
 import { getCopilotInsights, chatWithCopilot } from './copilot.js';
 
@@ -143,6 +146,40 @@ app.post('/api/copilot/chat', async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Error in Copilot chat:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Performance & Analytics: Structured Income Statements (Monthly / Quarterly)
+app.get('/api/analytics/income-statement', async (req, res) => {
+  try {
+    const periodType = req.query.periodType || null;
+    const statements = await getIncomeStatements(periodType);
+    res.json(statements);
+  } catch (error) {
+    console.error('Error fetching income statements:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Performance & Analytics: Non-Operating Gains & Asset Yields
+app.get('/api/analytics/non-operating-gains', async (req, res) => {
+  try {
+    const gains = await getNonOperatingGains();
+    res.json(gains);
+  } catch (error) {
+    console.error('Error fetching non-operating gains:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Performance & Analytics: Consolidated Performance Summary (KPIs, Habits, Trends)
+app.get('/api/analytics/summary', async (req, res) => {
+  try {
+    const summary = await getPerformanceSummary();
+    res.json(summary);
+  } catch (error) {
+    console.error('Error fetching analytics summary:', error);
     res.status(500).json({ error: error.message });
   }
 });

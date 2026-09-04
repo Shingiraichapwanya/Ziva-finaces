@@ -8,7 +8,10 @@ import {
   BudgetEnvelope,
   ExchangeRates,
   TaxQuarterSchedule,
-  Transaction
+  Transaction,
+  IncomeStatementPeriod,
+  NonOperatingGainRecord,
+  PerformanceSummary
 } from '../types/finance';
 
 const API_BASE = '/api';
@@ -166,5 +169,36 @@ export const financeApi = {
     });
     if (!res.ok) throw new Error(`Failed to ask Copilot: ${res.statusText}`);
     return res.json();
+  },
+
+  /**
+   * Fetch structured income statements (monthly or quarterly)
+   */
+  async getIncomeStatements(periodType?: 'MONTH' | 'QUARTER'): Promise<IncomeStatementPeriod[]> {
+    const query = periodType ? `?periodType=${periodType}` : '';
+    const res = await fetch(`${API_BASE}/analytics/income-statement${query}`, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error(`Failed to fetch income statements: ${res.statusText}`);
+    return res.json();
+  },
+
+  /**
+   * Fetch non-operating gains and yields
+   */
+  async getNonOperatingGains(): Promise<NonOperatingGainRecord[]> {
+    const res = await fetch(`${API_BASE}/analytics/non-operating-gains`, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error(`Failed to fetch non-operating gains: ${res.statusText}`);
+    return res.json();
+  },
+
+  /**
+   * Fetch consolidated performance and analytics summary
+   */
+  async getPerformanceSummary(): Promise<PerformanceSummary> {
+    const res = await fetch(`${API_BASE}/analytics/summary`, { signal: AbortSignal.timeout(20000) });
+    if (!res.ok) throw new Error(`Failed to fetch analytics summary: ${res.statusText}`);
+    return res.json();
   }
 };
+
+export const api = financeApi;
+

@@ -447,3 +447,201 @@ export async function insertTransaction(txData) {
     }
   }
 }
+
+/**
+ * Fetch structured Income Statements (monthly or quarterly)
+ */
+export async function getIncomeStatements(periodType = null) {
+  const whereClause = periodType ? `WHERE period_type = '${periodType.toUpperCase()}'` : '';
+  const sql = `
+    SELECT
+      period_type,
+      statement_period,
+      CAST(period_start_date AS STRING) AS period_start_date,
+      CAST(period_end_date AS STRING) AS period_end_date,
+      gross_operating_revenue_zar,
+      operating_expenses_zar,
+      net_operating_income_zar,
+      operating_margin_pct,
+      living_essentials_zar,
+      discretionary_expenses_zar,
+      statutory_and_debt_zar,
+      total_comprehensive_outflows_zar,
+      net_cash_surplus_zar,
+      savings_rate_pct,
+      vault_contributions_zar,
+      gross_operating_revenue_usd,
+      operating_expenses_usd,
+      net_operating_income_usd,
+      living_essentials_usd,
+      discretionary_expenses_usd,
+      statutory_and_debt_usd,
+      net_cash_surplus_usd,
+      vault_contributions_usd
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_income_statement_monthly_quarterly\`
+    ${whereClause}
+    ORDER BY period_start_date DESC
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    periodType: r.period_type,
+    statementPeriod: r.statement_period,
+    periodStartDate: r.period_start_date,
+    periodEndDate: r.period_end_date,
+    grossOperatingRevenueZar: parseFloat(r.gross_operating_revenue_zar || 0),
+    operatingExpensesZar: parseFloat(r.operating_expenses_zar || 0),
+    netOperatingIncomeZar: parseFloat(r.net_operating_income_zar || 0),
+    operatingMarginPct: parseFloat(r.operating_margin_pct || 0),
+    livingEssentialsZar: parseFloat(r.living_essentials_zar || 0),
+    discretionaryExpensesZar: parseFloat(r.discretionary_expenses_zar || 0),
+    statutoryAndDebtZar: parseFloat(r.statutory_and_debt_zar || 0),
+    totalComprehensiveOutflowsZar: parseFloat(r.total_comprehensive_outflows_zar || 0),
+    netCashSurplusZar: parseFloat(r.net_cash_surplus_zar || 0),
+    savingsRatePct: parseFloat(r.savings_rate_pct || 0),
+    vaultContributionsZar: parseFloat(r.vault_contributions_zar || 0),
+    grossOperatingRevenueUsd: parseFloat(r.gross_operating_revenue_usd || 0),
+    operatingExpensesUsd: parseFloat(r.operating_expenses_usd || 0),
+    netOperatingIncomeUsd: parseFloat(r.net_operating_income_usd || 0),
+    livingEssentialsUsd: parseFloat(r.living_essentials_usd || 0),
+    discretionaryExpensesUsd: parseFloat(r.discretionary_expenses_usd || 0),
+    statutoryAndDebtUsd: parseFloat(r.statutory_and_debt_usd || 0),
+    netCashSurplusUsd: parseFloat(r.net_cash_surplus_usd || 0),
+    vaultContributionsUsd: parseFloat(r.vault_contributions_usd || 0)
+  }));
+}
+
+/**
+ * Fetch non-operating gains and asset yields
+ */
+export async function getNonOperatingGains() {
+  const sql = `
+    SELECT
+      account_id,
+      account_name,
+      financial_institution,
+      country_code,
+      primary_currency,
+      account_type,
+      withdrawal_notice_days,
+      current_vault_balance_native,
+      current_vault_balance_zar,
+      current_vault_balance_usd,
+      gain_classification,
+      annualized_yield_pct,
+      monthly_projected_gain_zar,
+      monthly_projected_gain_usd
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.v_non_operating_gains_and_yields\`
+    ORDER BY current_vault_balance_zar DESC
+  `;
+  const rows = await runQuery(sql);
+  return rows.map(r => ({
+    accountId: r.account_id,
+    accountName: r.account_name,
+    financialInstitution: r.financial_institution,
+    countryCode: r.country_code,
+    primaryCurrency: r.primary_currency,
+    accountType: r.account_type,
+    withdrawalNoticeDays: parseInt(r.withdrawal_notice_days || 0, 10),
+    currentVaultBalanceNative: parseFloat(r.current_vault_balance_native || 0),
+    currentVaultBalanceZar: parseFloat(r.current_vault_balance_zar || 0),
+    currentVaultBalanceUsd: parseFloat(r.current_vault_balance_usd || 0),
+    gainClassification: r.gain_classification,
+    annualizedYieldPct: parseFloat(r.annualized_yield_pct || 0),
+    monthlyProjectedGainZar: parseFloat(r.monthly_projected_gain_zar || 0),
+    monthlyProjectedGainUsd: parseFloat(r.monthly_projected_gain_usd || 0)
+  }));
+}
+
+/**
+ * Fetch consolidated analytics summary including KPIs, spend habit distributions, and trends
+ */
+export async function getPerformanceSummary() {
+  const [statements, burnMetrics, nonOpGains, spendHabits] = await Promise.all([
+    getIncomeStatements('MONTH'),
+    getDailyBurnMetrics(),
+    getNonOperatingGains(),
+    runQuery(`
+      SELECT
+        c.category_group AS categoryGroup,
+        c.category_name AS categoryName,
+        COUNT(1) AS transactionCount,
+        ROUND(SUM(ABS(t.reporting_amount_zar)), 2) AS totalSpentZar,
+        ROUND(SUM(ABS(t.reporting_amount_usd)), 2) AS totalSpentUsd
+      FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.fct_transactions\` t
+      JOIN \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.dim_categories\` c
+        ON t.category_id = c.category_id
+      WHERE t.transaction_type IN ('EXPENSE', 'ALLOCATION_TRANSFER')
+      GROUP BY 1, 2
+      ORDER BY totalSpentZar DESC
+    `)
+  ]);
+
+  const latestStatement = statements[0] || {
+    grossOperatingRevenueZar: 0,
+    grossOperatingRevenueUsd: 0,
+    netOperatingIncomeZar: 0,
+    operatingMarginPct: 0,
+    savingsRatePct: 0,
+    netCashSurplusZar: 0,
+    netCashSurplusUsd: 0,
+    totalComprehensiveOutflowsZar: 0
+  };
+
+  const latestBurn = burnMetrics[0] || {
+    dailySpendZar: 0,
+    rolling7dAvgSpendZar: 0,
+    dailySpendUsd: 0,
+    rolling7dAvgSpendUsd: 0,
+    burnVelocityRatio: 1.0,
+    burnAlertStatus: 'NORMAL'
+  };
+
+  const totalMonthlyGainZar = nonOpGains.reduce((sum, g) => sum + g.monthlyProjectedGainZar, 0);
+  const totalMonthlyGainUsd = nonOpGains.reduce((sum, g) => sum + g.monthlyProjectedGainUsd, 0);
+
+  const totalSpentAllZar = spendHabits.reduce((acc, c) => acc + parseFloat(c.totalSpentZar || 0), 0);
+  const formattedHabits = spendHabits.map(h => ({
+    categoryGroup: h.categoryGroup,
+    categoryName: h.categoryName,
+    iconName: h.iconName || 'tag',
+    transactionCount: parseInt(h.transactionCount || 0, 10),
+    totalSpentZar: parseFloat(h.totalSpentZar || 0),
+    totalSpentUsd: parseFloat(h.totalSpentUsd || 0),
+    pctOfTotalSpend: totalSpentAllZar > 0 ? parseFloat(((parseFloat(h.totalSpentZar || 0) / totalSpentAllZar) * 100).toFixed(1)) : 0
+  }));
+
+  const monthlyTrends = [...statements].reverse().map(s => ({
+    statementPeriod: s.statementPeriod,
+    periodStartDate: s.periodStartDate,
+    operatingRevenueZar: s.grossOperatingRevenueZar,
+    operatingRevenueUsd: s.grossOperatingRevenueUsd,
+    totalOutflowsZar: s.totalComprehensiveOutflowsZar,
+    netSurplusZar: s.netCashSurplusZar,
+    netSurplusUsd: s.netCashSurplusUsd,
+    savingsRatePct: s.savingsRatePct,
+    operatingMarginPct: s.operatingMarginPct
+  }));
+
+  return {
+    kpis: {
+      savingsRatePct: latestStatement.savingsRatePct,
+      operatingMarginPct: latestStatement.operatingMarginPct,
+      rolling7dAvgSpendZar: latestBurn.rolling7dAvgSpendZar,
+      rolling7dAvgSpendUsd: latestBurn.rolling7dAvgSpendUsd,
+      latestDailySpendZar: latestBurn.dailySpendZar,
+      burnAlertStatus: latestBurn.burnAlertStatus,
+      burnVelocityRatio: latestBurn.burnVelocityRatio,
+      netCashSurplusZar: latestStatement.netCashSurplusZar,
+      netCashSurplusUsd: latestStatement.netCashSurplusUsd,
+      grossOperatingRevenueZar: latestStatement.grossOperatingRevenueZar,
+      grossOperatingRevenueUsd: latestStatement.grossOperatingRevenueUsd,
+      monthlyProjectedGainZar: parseFloat(totalMonthlyGainZar.toFixed(2)),
+      monthlyProjectedGainUsd: parseFloat(totalMonthlyGainUsd.toFixed(2))
+    },
+    spendHabits: formattedHabits,
+    monthlyTrends,
+    statements,
+    nonOperatingGains: nonOpGains
+  };
+}
+
