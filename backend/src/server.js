@@ -16,6 +16,7 @@ import {
   getVaultHoldings,
   insertTransaction
 } from './bigquery.js';
+import { getCopilotInsights, chatWithCopilot } from './copilot.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -119,6 +120,29 @@ app.get('/api/burn-rate', async (req, res) => {
     res.json(burn);
   } catch (error) {
     console.error('Error fetching burn metrics:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Gemini AI Copilot Insights & Runway Forecasting
+app.get('/api/copilot/insights', async (req, res) => {
+  try {
+    const insights = await getCopilotInsights();
+    res.json(insights);
+  } catch (error) {
+    console.error('Error generating Copilot insights:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Gemini AI Copilot Chat & Interactive Reasoning
+app.post('/api/copilot/chat', async (req, res) => {
+  try {
+    const { prompt, apiKey } = req.body;
+    const response = await chatWithCopilot({ prompt, apiKey });
+    res.json(response);
+  } catch (error) {
+    console.error('Error in Copilot chat:', error);
     res.status(500).json({ error: error.message });
   }
 });

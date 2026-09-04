@@ -10,6 +10,7 @@ interface TopBarProps {
   onOpenReceiptModal: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onOpenCopilot: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -19,7 +20,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isOnline,
   onOpenReceiptModal,
   onRefresh,
-  isRefreshing
+  isRefreshing,
+  onOpenCopilot
 }) => {
   return (
     <header className="topbar">
@@ -104,6 +106,18 @@ export const TopBar: React.FC<TopBarProps> = ({
             <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           </button>
         )}
+
+        {/* Gemini Copilot Action */}
+        <button
+          type="button"
+          className="btn btn-copilot-toggle"
+          onClick={onOpenCopilot}
+          id="btn-open-copilot"
+          title="Open Gemini AI Financial Copilot"
+        >
+          <Sparkles size={15} className="text-gold" />
+          <span>Gemini Copilot</span>
+        </button>
 
         {/* Scan Receipt Quick Action */}
         <button

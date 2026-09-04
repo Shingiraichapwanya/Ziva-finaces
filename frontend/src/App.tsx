@@ -11,6 +11,7 @@ import { TaxView } from './components/tax/TaxView';
 import { WealthManagementView } from './components/wealth/WealthManagementView';
 import { SettingsView } from './components/settings/SettingsView';
 import { ReceiptScanModal } from './components/sync/ReceiptScanModal';
+import { GeminiCopilotDrawer } from './components/copilot/GeminiCopilotDrawer';
 
 import {
   INITIAL_ACCOUNTS,
@@ -83,8 +84,21 @@ export function App() {
     fetchLiveData();
   }, []);
 
-  // Receipt Modal State
+  // Modals & Drawers State
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+
+  // Global Keyboard Shortcut: Ctrl+K / Cmd+K toggles Copilot
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCopilotOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Handle Ingest of New Transaction (optimistic ledger & balance updates)
   const handleAddTransaction = (newTx: Transaction) => {
@@ -172,6 +186,7 @@ export function App() {
           onOpenReceiptModal={() => setIsReceiptModalOpen(true)}
           onRefresh={fetchLiveData}
           isRefreshing={isRefreshing}
+          onOpenCopilot={() => setIsCopilotOpen(true)}
         />
 
         <main className="page-body">
@@ -185,6 +200,7 @@ export function App() {
               burnMetrics={burnMetrics}
               taxSchedule={taxSchedule}
               onNavigate={setCurrentTab}
+              onOpenCopilot={() => setIsCopilotOpen(true)}
             />
           )}
 
@@ -249,6 +265,14 @@ export function App() {
         isOpen={isReceiptModalOpen}
         onClose={() => setIsReceiptModalOpen(false)}
         onSaveReceiptTransaction={handleAddTransaction}
+      />
+
+      {/* Gemini AI Financial Copilot Drawer */}
+      <GeminiCopilotDrawer
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        masterCurrency={masterCurrency}
+        rates={rates}
       />
     </div>
   );

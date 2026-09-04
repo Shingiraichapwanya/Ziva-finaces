@@ -99,6 +99,18 @@ export async function getExchangeRates() {
   return rates;
 }
 
+export const OPENING_BALANCES = {
+  ACC_ZA_CAPITEC_DAILY: 18450.00,
+  ACC_ZA_FNB_MONTHLY: 32800.00,
+  ACC_ZA_DISCOVERY_VAULT: 150000.00,
+  ACC_ZA_EE_EQUITIES_VAULT: 680000.00,
+  ACC_ZW_ECOCASH_USD: 1250.00,
+  ACC_ZW_ECOCASH_ZIG: 4500.00,
+  ACC_ZW_INNBUCKS_USD: 200.00,
+  ACC_ZW_OM_BALANCED_VAULT: 15000.00,
+  ACC_ZW_STANBIC_NOSTRO_MONTHLY: 2400.00
+};
+
 /**
  * Fetch accounts with calculated balances
  */
@@ -125,13 +137,17 @@ export async function getAccounts() {
     ORDER BY a.cash_flow_tier, a.account_name
   `;
   const rows = await runQuery(sql);
-  return rows.map(r => ({
-    ...r,
-    nativeBalance: parseFloat(r.nativeBalance || 0),
-    withdrawalNoticeDays: parseInt(r.withdrawalNoticeDays || 0, 10),
-    isVaultLocked: Boolean(r.isVaultLocked),
-    isActive: Boolean(r.isActive)
-  }));
+  return rows.map(r => {
+    const txNet = parseFloat(r.nativeBalance || 0);
+    const opening = OPENING_BALANCES[r.accountId] || 0.0;
+    return {
+      ...r,
+      nativeBalance: parseFloat((opening + txNet).toFixed(2)),
+      withdrawalNoticeDays: parseInt(r.withdrawalNoticeDays || 0, 10),
+      isVaultLocked: Boolean(r.isVaultLocked),
+      isActive: Boolean(r.isActive)
+    };
+  });
 }
 
 /**

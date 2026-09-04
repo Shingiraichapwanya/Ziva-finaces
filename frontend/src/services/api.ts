@@ -21,6 +21,43 @@ export interface HealthStatus {
   timestamp: string;
 }
 
+export interface CopilotInsightItem {
+  id: string;
+  type: 'RUNWAY' | 'TAX' | 'CURRENCY' | 'BUDGET';
+  urgency: 'HIGH' | 'MEDIUM' | 'LOW' | 'OPTIMAL';
+  title: string;
+  summary: string;
+  action: string;
+  metric: string;
+  category: string;
+}
+
+export interface CopilotMetrics {
+  liquidReserveZar: number;
+  vaultTotalZar: number;
+  averageDailyBurnZar: number;
+  baselineRunwayDays: number;
+  fixedObligationsRunwayDays: number;
+  survivalDate: string;
+  monthlyFixedCommitmentsZar: number;
+  taxSavingsAtRiskZar: number;
+  taxDeductibleUnverifiedCount: number;
+  spreadPct: number;
+  burnStatus: 'OPTIMAL' | 'STABLE' | 'ACCELERATING';
+}
+
+export interface CopilotInsightsResponse {
+  metrics: CopilotMetrics;
+  insights: CopilotInsightItem[];
+  generatedAt: string;
+}
+
+export interface CopilotChatResponse {
+  reply: string;
+  model: string;
+  metrics: CopilotMetrics;
+}
+
 export const financeApi = {
   /**
    * Check connection status to BigQuery backend
@@ -105,6 +142,29 @@ export const financeApi = {
   async getDailyBurnMetrics(): Promise<any[]> {
     const res = await fetch(`${API_BASE}/burn-rate`, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`Failed to fetch burn rate: ${res.statusText}`);
+    return res.json();
+  },
+
+  /**
+   * Fetch Gemini AI Copilot predictive insights & burn metrics
+   */
+  async getCopilotInsights(): Promise<CopilotInsightsResponse> {
+    const res = await fetch(`${API_BASE}/copilot/insights`, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error(`Failed to fetch Copilot insights: ${res.statusText}`);
+    return res.json();
+  },
+
+  /**
+   * Send prompt to Gemini AI Copilot
+   */
+  async askCopilot(prompt: string, apiKey?: string): Promise<CopilotChatResponse> {
+    const res = await fetch(`${API_BASE}/copilot/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, apiKey }),
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!res.ok) throw new Error(`Failed to ask Copilot: ${res.statusText}`);
     return res.json();
   }
 };

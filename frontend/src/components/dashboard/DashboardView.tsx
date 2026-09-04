@@ -21,6 +21,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { NavTab } from '../layout/Sidebar';
+import { CopilotBriefingCard } from '../copilot/CopilotBriefingCard';
 
 interface DashboardViewProps {
   accounts: Account[];
@@ -31,6 +32,7 @@ interface DashboardViewProps {
   burnMetrics: PredictiveBurnMetrics;
   taxSchedule: TaxQuarterSchedule;
   onNavigate: (tab: NavTab) => void;
+  onOpenCopilot: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -41,7 +43,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   rates,
   burnMetrics,
   taxSchedule,
-  onNavigate
+  onNavigate,
+  onOpenCopilot
 }) => {
   // 1. Calculate Total Net Worth across all accounts in Master Currency
   let totalNetWorthMaster = 0;
@@ -115,7 +118,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </section>
 
-      {/* 2. Wealth Management Suite Snapshot Tiles */}
+      {/* 2. Gemini AI Financial Intelligence Briefing */}
+      <CopilotBriefingCard onOpenCopilot={onOpenCopilot} masterCurrency={masterCurrency} />
+
+      {/* 3. Wealth Management Suite Snapshot Tiles */}
       <section className="wealth-tiles-row">
         {/* Tile 1: Predictive Burn */}
         <div className="glass-panel wealth-tile" onClick={() => onNavigate('wealth')}>
