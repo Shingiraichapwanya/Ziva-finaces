@@ -1,13 +1,16 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/ziva_theme.dart';
 import '../../core/utils/currency_formatter.dart';
+import '../../core/utils/transaction_parser.dart';
+import '../../core/utils/web_file_uploader.dart';
 import '../../models/transaction_model.dart';
 import '../../services/sqlite_service.dart';
 import '../../services/sync_engine.dart';
 
 class QuickEntryBottomSheet extends StatefulWidget {
-  final Function(TransactionModel) onTransactionLogged;
+  final void Function(TransactionModel) onTransactionLogged;
 
   const QuickEntryBottomSheet({super.key, required this.onTransactionLogged});
 
@@ -20,14 +23,21 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
   final _amountController = TextEditingController();
   final _payeeController = TextEditingController();
   final _notesController = TextEditingController();
+  final _nlpController = TextEditingController();
 
   String _selectedCurrency = 'ZAR';
   String _selectedAccountId = 'ACC_ZA_CAPITEC_DAILY';
   String _selectedCategoryId = 'CAT_GROCERIES';
   String _selectedCategoryName = 'Groceries & Household Supplies';
-  String _transactionType = 'EXPENSE';
+  final String _transactionType = 'EXPENSE';
   bool _isTaxDeductible = false;
   bool _isSubmitting = false;
+
+  // Real-time Parser & Receipt OCR State
+  ParsedTransaction? _currentParsed;
+  bool _isScanningReceipt = false;
+  bool _isDragOver = false;
+  UploadedReceiptFile? _scannedFile;
 
   final List<Map<String, String>> _accounts = [
     {'id': 'ACC_ZA_CAPITEC_DAILY', 'name': 'Capitec Daily Cheque (ZAR)'},
@@ -42,17 +52,166 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
     {'id': 'CAT_TECH_HARDWARE', 'name': 'Productivity Tech & Work Hardware', 'tax': '1'},
     {'id': 'CAT_SOFTWARE_SAAS', 'name': 'Business Software & Cloud Subscriptions', 'tax': '1'},
     {'id': 'CAT_RENT', 'name': 'Residential Rent & Levies', 'tax': '0'},
-    {'id': 'CAT_FIBRE_INTERNET', 'name': 'High-Speed Home Fibre', 'tax': '0'},
+    {'id': 'CAT_FIBRE_INTERNET', 'name': 'High-Speed Home Fibre', 'tax': '1'},
     {'id': 'CAT_DINING_COFFEE', 'name': 'Restaurants, Takeaways & Coffee', 'tax': '0'},
-    {'id': 'CAT_TAX_STATUTORY', 'name': 'Provisional & Statutory Tax Payments', 'tax': '0'},
+    {'id': 'CAT_TAX_STATUTORY', 'name': 'Provisional & Statutory Tax Payments', 'tax': '1'},
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      registerDragDropListener(
+        onFileDropped: _processReceiptFile,
+        onDragStateChanged: (isDragging) {
+          if (mounted) setState(() => _isDragOver = isDragging);
+        },
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    if (kIsWeb) {
+      unregisterDragDropListener();
+    }
     _amountController.dispose();
     _payeeController.dispose();
     _notesController.dispose();
+    _nlpController.dispose();
     super.dispose();
+  }
+
+  /// Automatically matches an appropriate default account when currency changes
+  void _autoMatchAccount(String currency) {
+    if (currency == 'USD') {
+      _selectedAccountId = 'ACC_ZW_ECOCASH_USD';
+    } else if (currency == 'ZiG') {
+      _selectedAccountId = 'ACC_ZW_ECOCASH_ZIG';
+    } else {
+      _selectedAccountId = 'ACC_ZA_CAPITEC_DAILY';
+    }
+  }
+
+  /// Real-time parsing of natural language sentence
+  void _onNlpChanged(String text) {
+    if (text.trim().isEmpty) {
+      setState(() {
+        _currentParsed = null;
+      });
+      return;
+    }
+
+    final parsed = TransactionParser.parse(text);
+    if (parsed.hasAnyExtractedField) {
+      setState(() {
+        _currentParsed = parsed;
+        if (parsed.amount != null) {
+          _amountController.text = parsed.amount! % 1 == 0
+              ? parsed.amount!.toInt().toString()
+              : parsed.amount!.toStringAsFixed(2);
+        }
+        if (parsed.currency != null) {
+          _selectedCurrency = parsed.currency!;
+          _autoMatchAccount(parsed.currency!);
+        }
+        if (parsed.merchant != null && parsed.merchant!.isNotEmpty) {
+          _payeeController.text = parsed.merchant!;
+        }
+        if (parsed.categoryId != null) {
+          _selectedCategoryId = parsed.categoryId!;
+          _selectedCategoryName = parsed.categoryName ?? _selectedCategoryName;
+        }
+        _isTaxDeductible = parsed.isTaxDeductible;
+        if (parsed.notes != null) {
+          _notesController.text = parsed.notes!;
+        }
+      });
+    } else {
+      setState(() {
+        _currentParsed = null;
+      });
+    }
+  }
+
+  /// Triggers file upload / selection for receipt OCR
+  Future<void> _handleReceiptPicker() async {
+    setState(() => _isScanningReceipt = true);
+    try {
+      final file = await pickReceiptFileWeb();
+      if (file != null) {
+        await _processReceiptFile(file);
+      }
+    } catch (e) {
+      debugPrint('[QuickEntry] Error selecting receipt file: $e');
+    } finally {
+      if (mounted) setState(() => _isScanningReceipt = false);
+    }
+  }
+
+  /// Processes uploaded receipt file and extracts details
+  Future<void> _processReceiptFile(UploadedReceiptFile file) async {
+    setState(() {
+      _isScanningReceipt = true;
+      _scannedFile = file;
+    });
+
+    // Simulated OCR scanning delay for realistic UX feedback
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+
+    final parsed = TransactionParser.parseReceipt(
+      fileName: file.name,
+      fileContent: file.textSnippet,
+      fileSize: file.size,
+    );
+
+    if (mounted) {
+      setState(() {
+        _isScanningReceipt = false;
+        _currentParsed = parsed;
+        if (parsed.amount != null && parsed.amount! > 0) {
+          _amountController.text = parsed.amount! % 1 == 0
+              ? parsed.amount!.toInt().toString()
+              : parsed.amount!.toStringAsFixed(2);
+        }
+        if (parsed.currency != null) {
+          _selectedCurrency = parsed.currency!;
+          _autoMatchAccount(parsed.currency!);
+        }
+        if (parsed.merchant != null && parsed.merchant!.isNotEmpty) {
+          _payeeController.text = parsed.merchant!;
+        }
+        if (parsed.categoryId != null) {
+          _selectedCategoryId = parsed.categoryId!;
+          _selectedCategoryName = parsed.categoryName ?? _selectedCategoryName;
+        }
+        _isTaxDeductible = parsed.isTaxDeductible;
+        _notesController.text = parsed.notes ?? 'Scanned from receipt: ${file.name}';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: ZivaTheme.bgSurface,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: ZivaTheme.gold400),
+          ),
+          content: Row(
+            children: [
+              const Icon(Icons.document_scanner_rounded, color: ZivaTheme.gold400, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Extracted: ${parsed.merchant ?? "Merchant"} • ${parsed.currency ?? "ZAR"} ${parsed.amount?.toStringAsFixed(2) ?? ""} • ${parsed.categoryName ?? "Category"}',
+                  style: const TextStyle(color: ZivaTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _submitTransaction() async {
@@ -79,6 +238,11 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
       toCurrency: 'USD',
     );
 
+    final String? rName = _scannedFile?.name;
+    final String? rUrl = _scannedFile != null
+        ? 'https://storage.googleapis.com/budget-tracker-507418-receipts/tax_2026/${txId}_${_scannedFile!.name}'
+        : null;
+
     final newTx = TransactionModel(
       transactionId: txId,
       transactionDate: dateStr,
@@ -94,14 +258,20 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
       paymentMethod: 'EFT/Card',
       isTaxDeductible: _isTaxDeductible,
       notes: _notesController.text.trim(),
-      tags: ['mobile_offline_entry'],
-      isSynced: false, // Initially marked false until background worker syncs
+      tags: [
+        'mobile_entry',
+        if (_scannedFile != null) 'receipt_attached',
+        if (_isTaxDeductible) 'tax_deductible',
+      ],
+      isSynced: false,
+      receiptName: rName,
+      receiptUrl: rUrl,
     );
 
-    // 1. Write to local SQLite database cache
+    // 1. Write to local SQLite / Web BigQuery service
     await SqliteService.instance.saveTransaction(newTx);
 
-    // 2. Enqueue in SQLite sync queue with JSON payload
+    // 2. Enqueue in sync queue with JSON payload
     await SqliteService.instance.enqueueMutation(
       transactionId: txId,
       payloadJson: jsonEncode(newTx.toJson()),
@@ -122,14 +292,14 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
             borderRadius: BorderRadius.circular(10),
             side: const BorderSide(color: ZivaTheme.borderCard),
           ),
-          content: Row(
+          content: const Row(
             children: [
-              const Icon(Icons.cloud_queue_rounded, color: ZivaTheme.gold400, size: 20),
-              const SizedBox(width: 10),
+              Icon(Icons.cloud_queue_rounded, color: ZivaTheme.gold400, size: 20),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Transaction logged offline. Queued for BigQuery sync.',
-                  style: const TextStyle(color: ZivaTheme.textPrimary, fontSize: 13),
+                  'Transaction logged. Syncing to BigQuery warehouse.',
+                  style: TextStyle(color: ZivaTheme.textPrimary, fontSize: 13),
                 ),
               ),
             ],
@@ -146,10 +316,10 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: ZivaTheme.bgSurface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: ZivaTheme.borderCard)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border.all(color: ZivaTheme.borderCard),
         ),
         padding: const EdgeInsets.all(24.0),
         child: SingleChildScrollView(
@@ -163,13 +333,37 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Log Transaction (Offline-First)',
-                      style: TextStyle(
-                        color: ZivaTheme.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: ZivaTheme.gold500.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.4)),
+                          ),
+                          child: const Icon(Icons.add_shopping_cart_rounded, color: ZivaTheme.gold400, size: 18),
+                        ),
+                        const SizedBox(width: 10),
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Log Transaction',
+                              style: TextStyle(
+                                color: ZivaTheme.textPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'Natural Language & Instant Receipt OCR',
+                              style: TextStyle(fontSize: 10, color: ZivaTheme.textMuted, letterSpacing: 0.3),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     IconButton(
                       icon: const Icon(Icons.close_rounded, color: ZivaTheme.textMuted),
@@ -177,9 +371,43 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 18),
+
+                // ==========================================
+                // INPUT METHOD 1: Natural Language Input
+                // ==========================================
+                _buildNaturalLanguageSection(),
                 const SizedBox(height: 16),
 
-                // Amount & Currency Row
+                // ==========================================
+                // INPUT METHOD 2: Drag-and-Drop / File Upload Zone
+                // ==========================================
+                _buildReceiptDropzoneSection(),
+                const SizedBox(height: 20),
+
+                // Divider / Section Indicator
+                const Row(
+                  children: [
+                    Expanded(child: Divider(color: ZivaTheme.borderSubtle)),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'VERIFY & FINALIZE ENTRY',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: ZivaTheme.textMuted,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: ZivaTheme.borderSubtle)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Manual Amount & Currency Row
                 Row(
                   children: [
                     Expanded(
@@ -188,7 +416,7 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                         controller: _amountController,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         style: const TextStyle(
-                          fontSize: 24,
+                          fontSize: 22,
                           fontWeight: FontWeight.w800,
                           color: ZivaTheme.textPrimary,
                         ),
@@ -208,7 +436,8 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                     Expanded(
                       flex: 2,
                       child: DropdownButtonFormField<String>(
-                        value: _selectedCurrency,
+                        key: ValueKey(_selectedCurrency),
+                        initialValue: _selectedCurrency,
                         decoration: const InputDecoration(labelText: 'Currency'),
                         dropdownColor: ZivaTheme.bgCard,
                         items: ['ZAR', 'USD', 'ZiG'].map((c) {
@@ -218,17 +447,23 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                           );
                         }).toList(),
                         onChanged: (val) {
-                          if (val != null) setState(() => _selectedCurrency = val);
+                          if (val != null) {
+                            setState(() {
+                              _selectedCurrency = val;
+                              _autoMatchAccount(val);
+                            });
+                          }
                         },
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Account Picker
                 DropdownButtonFormField<String>(
-                  value: _selectedAccountId,
+                  key: ValueKey(_selectedAccountId),
+                  initialValue: _selectedAccountId,
                   decoration: const InputDecoration(
                     labelText: 'Payment Account',
                     prefixIcon: Icon(Icons.account_balance_wallet_outlined, color: ZivaTheme.cyan400),
@@ -244,11 +479,12 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                     if (val != null) setState(() => _selectedAccountId = val);
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Category Picker
                 DropdownButtonFormField<String>(
-                  value: _selectedCategoryId,
+                  key: ValueKey(_selectedCategoryId),
+                  initialValue: _selectedCategoryId,
                   decoration: const InputDecoration(
                     labelText: 'Category',
                     prefixIcon: Icon(Icons.category_outlined, color: ZivaTheme.emerald400),
@@ -271,7 +507,7 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                     }
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Merchant / Payee
                 TextFormField(
@@ -282,24 +518,67 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                     prefixIcon: Icon(Icons.storefront_outlined, color: ZivaTheme.textSecondary),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
                 // Tax Deductible Switch
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  activeColor: ZivaTheme.gold500,
-                  title: const Text(
-                    'SARS Tax Deductible (Business Offset)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: ZivaTheme.textPrimary),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _isTaxDeductible
+                        ? ZivaTheme.gold500.withValues(alpha: 0.1)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _isTaxDeductible
+                          ? ZivaTheme.gold500.withValues(alpha: 0.3)
+                          : ZivaTheme.borderSubtle,
+                    ),
                   ),
-                  subtitle: const Text(
-                    'Flags for 27% provisional tax write-off',
-                    style: TextStyle(fontSize: 11, color: ZivaTheme.textMuted),
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    activeThumbColor: ZivaTheme.gold500,
+                    title: Row(
+                      children: [
+                        const Text(
+                          'SARS Tax Deductible (Business Offset)',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: ZivaTheme.textPrimary),
+                        ),
+                        if (_isTaxDeductible) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: ZivaTheme.gold500,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '27% OFFSET',
+                              style: TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    subtitle: const Text(
+                      'Eligible for provisional tax liability deduction in BigQuery warehouse',
+                      style: TextStyle(fontSize: 11, color: ZivaTheme.textMuted),
+                    ),
+                    value: _isTaxDeductible,
+                    onChanged: (val) => setState(() => _isTaxDeductible = val),
                   ),
-                  value: _isTaxDeductible,
-                  onChanged: (val) => setState(() => _isTaxDeductible = val),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 14),
+
+                // Notes Field
+                TextFormField(
+                  controller: _notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes / Tax Invoice Reference',
+                    hintText: 'e.g. Invoice INV-WORK-771, project supplies',
+                    prefixIcon: Icon(Icons.edit_note_rounded, color: ZivaTheme.textSecondary),
+                  ),
+                ),
+                const SizedBox(height: 22),
 
                 // Submit Button
                 SizedBox(
@@ -312,13 +591,307 @@ class _QuickEntryBottomSheetState extends State<QuickEntryBottomSheet> {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                           )
-                        : const Text('Save Offline & Queue Sync'),
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.cloud_upload_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text('Save & Ingest to BigQuery', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                   ),
                 ),
                 const SizedBox(height: 12),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// UI for Natural Language Input Field with Real-Time Extraction
+  Widget _buildNaturalLanguageSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: ZivaTheme.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _currentParsed != null
+              ? ZivaTheme.gold500.withValues(alpha: 0.5)
+              : ZivaTheme.borderCard,
+        ),
+      ),
+      padding: const EdgeInsets.all(14.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome_rounded, color: ZivaTheme.gold400, size: 16),
+              const SizedBox(width: 8),
+              const Text(
+                'Natural Language Quick Input',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: ZivaTheme.textPrimary,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: ZivaTheme.gold500.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'REAL-TIME PARSER',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: ZivaTheme.gold400,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _nlpController,
+            onChanged: _onNlpChanged,
+            style: const TextStyle(fontSize: 13, color: ZivaTheme.textPrimary),
+            decoration: InputDecoration(
+              hintText: "Type e.g. 'Spent 120 ZAR on groceries at Woolworths today'...",
+              hintStyle: TextStyle(fontSize: 12, color: ZivaTheme.textMuted.withValues(alpha: 0.6)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              suffixIcon: _nlpController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 16, color: ZivaTheme.textMuted),
+                      onPressed: () {
+                        _nlpController.clear();
+                        _onNlpChanged('');
+                      },
+                    )
+                  : null,
+            ),
+          ),
+          if (_currentParsed != null && _currentParsed!.hasAnyExtractedField) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (_currentParsed!.amount != null)
+                  _buildExtractedPill(
+                    icon: Icons.payments_rounded,
+                    label: '${_currentParsed!.currency ?? "ZAR"} ${_currentParsed!.amount!.toStringAsFixed(2)}',
+                    color: ZivaTheme.emerald400,
+                  ),
+                if (_currentParsed!.merchant != null && _currentParsed!.merchant!.isNotEmpty)
+                  _buildExtractedPill(
+                    icon: Icons.storefront_rounded,
+                    label: _currentParsed!.merchant!,
+                    color: ZivaTheme.cyan400,
+                  ),
+                if (_currentParsed!.categoryName != null)
+                  _buildExtractedPill(
+                    icon: Icons.category_rounded,
+                    label: _currentParsed!.categoryName!,
+                    color: ZivaTheme.gold400,
+                  ),
+                if (_currentParsed!.isTaxDeductible)
+                  _buildExtractedPill(
+                    icon: Icons.shield_rounded,
+                    label: 'Tax Deductible',
+                    color: ZivaTheme.rose400,
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          // Clickable NLP sample presets
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildSampleChip('Spent 120 ZAR on groceries at Woolworths today'),
+                const SizedBox(width: 6),
+                _buildSampleChip('Bought 4500 ZAR standing desk for work invoice INV-WORK-771'),
+                const SizedBox(width: 6),
+                _buildSampleChip('Paid \$45.50 for dinner at Nandos'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// UI for Drag-and-Drop / File Upload Zone for Receipts
+  Widget _buildReceiptDropzoneSection() {
+    return GestureDetector(
+      onTap: _isScanningReceipt ? null : _handleReceiptPicker,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: _isDragOver
+              ? ZivaTheme.gold500.withValues(alpha: 0.15)
+              : ZivaTheme.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isDragOver
+                ? ZivaTheme.gold400
+                : (_scannedFile != null
+                    ? ZivaTheme.emerald400.withValues(alpha: 0.6)
+                    : ZivaTheme.borderCard),
+            width: _isDragOver ? 1.8 : 1.0,
+            style: BorderStyle.solid,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: _isScanningReceipt
+            ? const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: ZivaTheme.gold400),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Ziva Vision OCR: Scanning receipt line items & tax references...',
+                    style: TextStyle(fontSize: 12, color: ZivaTheme.gold300, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: (_scannedFile != null ? ZivaTheme.emerald400 : ZivaTheme.gold500)
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      _scannedFile != null
+                          ? Icons.check_circle_rounded
+                          : Icons.cloud_upload_outlined,
+                      color: _scannedFile != null ? ZivaTheme.emerald400 : ZivaTheme.gold400,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              _scannedFile != null
+                                  ? 'Receipt Attached: ${_scannedFile!.name}'
+                                  : 'Drag & Drop Receipt or PDF',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: ZivaTheme.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (kIsWeb) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: ZivaTheme.cyan400.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'WEB OCR',
+                                  style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: ZivaTheme.cyan400),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _scannedFile != null
+                              ? 'Extracted details auto-filled into form (${_scannedFile!.formattedSize})'
+                              : 'Drop receipt image/PDF or click to select • Instant field auto-fill',
+                          style: const TextStyle(fontSize: 11, color: ZivaTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: _isScanningReceipt ? null : _handleReceiptPicker,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: ZivaTheme.borderCard),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
+                    child: const Text('Browse', style: TextStyle(fontSize: 11, color: ZivaTheme.textSecondary)),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildExtractedPill({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSampleChip(String prompt) {
+    return GestureDetector(
+      onTap: () {
+        _nlpController.text = prompt;
+        _onNlpChanged(prompt);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: ZivaTheme.bgSurface,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: ZivaTheme.borderSubtle),
+        ),
+        child: Text(
+          prompt,
+          style: const TextStyle(fontSize: 10, color: ZivaTheme.textMuted),
         ),
       ),
     );

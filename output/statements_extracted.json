@@ -1,0 +1,11 @@
+[
+  {
+    "message_id": "SYNTHETIC_MSG_STANDARD_BANK_001",
+    "filename": "StandardBank_eStatement_Feb2026_Encrypted.pdf",
+    "is_encrypted": true,
+    "decrypted": true,
+    "page_count": 1,
+    "parsed_transaction_count": 9,
+    "text_preview": "STANDARD BANK OF SOUTH AFRICA - TAX STATEMENT Account Number: 023456789 (MyMo Plus Cheque Account) Statement Period: 01 Feb 2026 to 28 Feb 2026 Opening Balance: ZAR 22,500.00  Date        Description                              Amount (ZAR)    Balance (ZAR) -------------------------------------------------------------------------------- 2026-02-02"
+  }
+]

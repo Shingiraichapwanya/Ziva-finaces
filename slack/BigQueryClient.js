@@ -127,7 +127,7 @@ class BigQueryClient {
     const localTimeStr = isoString.replace('Z', '').split('.')[0]; // civil DATETIME
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const txId = `TX_SLACK_${dateStr.replace(/-/g, '')}_${randomSuffix}`;
+    const txId = txData.transactionId || `TX_SLACK_${dateStr.replace(/-/g, '')}_${randomSuffix}`;
 
     const fxRates = this.getLatestExchangeRates();
     const conversions = this.convertCurrency(txData.originalAmount, txData.originalCurrency, fxRates);
@@ -160,11 +160,13 @@ class BigQueryClient {
       tax_invoice_number: txData.taxInvoiceNumber || null,
       notes: txData.notes,
       tags: txData.tags,
-      metadata: {
+      metadata: Object.assign({
         source: 'slack_bot',
         raw_prompt: txData.rawInput,
+        receipt_name: txData.receiptName || null,
+        receipt_url: txData.receiptUrl || null,
         ingested_at: isoString
-      }
+      }, txData.metadata || {})
     };
 
     // Attempt 1: Load Job via Apps Script BigQuery Service (Works in Free Sandbox!)

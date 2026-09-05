@@ -27,7 +27,7 @@ class ApiService {
     final uri = Uri.parse('$baseUrl${ApiConstants.accountsEndpoint}');
     final res = await _client.get(uri).timeout(const Duration(seconds: 8));
     if (res.statusCode == 200) {
-      final List<dynamic> list = jsonDecode(res.body);
+      final List<dynamic> list = jsonDecode(res.body) as List<dynamic>;
       return list.map((item) => AccountModel.fromJson(item as Map<String, dynamic>)).toList();
     }
     throw Exception('Failed to fetch accounts: ${res.statusCode}');
@@ -38,7 +38,7 @@ class ApiService {
     final uri = Uri.parse('$baseUrl${ApiConstants.transactionsEndpoint}?limit=$limit');
     final res = await _client.get(uri).timeout(const Duration(seconds: 10));
     if (res.statusCode == 200) {
-      final List<dynamic> list = jsonDecode(res.body);
+      final List<dynamic> list = jsonDecode(res.body) as List<dynamic>;
       return list.map((item) => TransactionModel.fromJson(item as Map<String, dynamic>)).toList();
     }
     throw Exception('Failed to fetch transactions: ${res.statusCode}');
@@ -67,5 +67,25 @@ class ApiService {
       return jsonDecode(res.body) as Map<String, dynamic>;
     }
     throw Exception('Failed to fetch analytics summary: ${res.statusCode}');
+  }
+
+  /// Run a live test query directly against the BigQuery dataset
+  Future<Map<String, dynamic>> runBigQueryTestQuery() async {
+    final uri = Uri.parse('$baseUrl${ApiConstants.testQueryEndpoint}');
+    final res = await _client.get(uri).timeout(const Duration(seconds: 15));
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to execute BigQuery test query: ${res.statusCode} ${res.body}');
+  }
+
+  /// Delete a transaction record from BigQuery warehouse
+  Future<bool> deleteTransaction(String transactionId) async {
+    final uri = Uri.parse('$baseUrl${ApiConstants.transactionsEndpoint}/$transactionId');
+    final res = await _client.delete(uri).timeout(const Duration(seconds: 15));
+    if (res.statusCode == 200) {
+      return true;
+    }
+    throw Exception('Failed to delete transaction from BigQuery: ${res.statusCode} ${res.body}');
   }
 }

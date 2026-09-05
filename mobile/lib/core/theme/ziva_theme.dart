@@ -48,12 +48,11 @@ class ZivaTheme {
         primary: gold500,
         secondary: cyan400,
         surface: bgSurface,
-        background: bgCore,
         error: rose500,
         onPrimary: Colors.black,
         onSurface: textPrimary,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: bgCard,
         elevation: 0,
         shape: RoundedRectangleBorder(

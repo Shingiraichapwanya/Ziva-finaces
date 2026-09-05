@@ -12,7 +12,7 @@ class PrivacyShield extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
         child: Container(
-          color: ZivaTheme.bgCore.withOpacity(0.92),
+          color: ZivaTheme.bgCore.withValues(alpha: 0.92),
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -23,10 +23,10 @@ class PrivacyShield extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: ZivaTheme.bgSurface,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: ZivaTheme.gold500.withOpacity(0.4), width: 1.5),
+                    border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.4), width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: ZivaTheme.gold500.withOpacity(0.2),
+                        color: ZivaTheme.gold500.withValues(alpha: 0.2),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
@@ -52,9 +52,9 @@ class PrivacyShield extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: ZivaTheme.gold500.withOpacity(0.15),
+                    color: ZivaTheme.gold500.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: ZivaTheme.gold500.withOpacity(0.3)),
+                    border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.3)),
                   ),
                   child: const Text(
                     'FINANCIAL PRIVACY ACTIVE',

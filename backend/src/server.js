@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import {
   BQ_CONFIG,
+  runQuery,
   getExchangeRates,
   getAccounts,
   getTransactions,
@@ -15,6 +16,7 @@ import {
   getDailyBurnMetrics,
   getVaultHoldings,
   insertTransaction,
+  deleteTransaction,
   getIncomeStatements,
   getNonOperatingGains,
   getPerformanceSummary
@@ -36,6 +38,30 @@ app.get('/api/health', (req, res) => {
     location: BQ_CONFIG.location,
     timestamp: new Date().toISOString()
   });
+});
+
+// Live BigQuery test query execution endpoint
+app.get('/api/test-query', async (req, res) => {
+  try {
+    const sql = `SELECT 
+      CURRENT_TIMESTAMP() as query_time,
+      COUNT(1) as total_transactions,
+      ROUND(SUM(reporting_amount_zar), 2) as total_volume_zar
+    FROM \`${BQ_CONFIG.projectId}.${BQ_CONFIG.datasetId}.fct_transactions\``;
+    const rows = await runQuery(sql);
+    res.json({
+      status: 'SUCCESS',
+      project: BQ_CONFIG.projectId,
+      dataset: BQ_CONFIG.datasetId,
+      location: BQ_CONFIG.location,
+      result: rows[0] || rows,
+      rowCount: rows.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error running BigQuery test query:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Live FX rates
@@ -79,6 +105,18 @@ app.post('/api/transactions', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error inserting transaction:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete transaction (Hard delete from BigQuery warehouse)
+app.delete('/api/transactions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await deleteTransaction(id);
+    res.json(result);
+  } catch (error) {
+    console.error(`Error deleting transaction ${req.params.id}:`, error);
     res.status(500).json({ error: error.message });
   }
 });

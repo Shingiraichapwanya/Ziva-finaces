@@ -1,13 +1,17 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 class ApiConstants {
-  // Default to localhost for iOS Simulator or 10.0.2.2 for Android Emulator.
+  // Default to localhost for Web, iOS Simulator, or Desktop; 10.0.2.2 for Android Emulator.
   // Can also be overridden at build time via --dart-define=ZIVA_API_URL=https://...
   static String get defaultBaseUrl {
     const fromEnv = String.fromEnvironment('ZIVA_API_URL');
     if (fromEnv.isNotEmpty) return fromEnv;
 
-    if (Platform.isAndroid) {
+    if (kIsWeb) {
+      return 'http://localhost:3001';
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
       return 'http://10.0.2.2:3001';
     } else {
       return 'http://localhost:3001';
@@ -24,4 +28,5 @@ class ApiConstants {
   static const String taxScheduleEndpoint = '/api/tax-schedule';
   static const String analyticsSummaryEndpoint = '/api/analytics/summary';
   static const String copilotChatEndpoint = '/api/copilot/chat';
+  static const String testQueryEndpoint = '/api/test-query';
 }

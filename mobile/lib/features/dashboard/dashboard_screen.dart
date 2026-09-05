@@ -21,7 +21,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedCurrency = 'ZAR';
   List<AccountModel> _accounts = [];
   List<TransactionModel> _recentTransactions = [];
-  bool _isLoading = true;
   int _secretTapCount = 0;
 
   @override
@@ -31,15 +30,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboardData() async {
-    setState(() => _isLoading = true);
     final accounts = await SqliteService.instance.getLocalAccounts();
     final txs = await SqliteService.instance.getTransactions(limit: 5);
 
-    setState(() {
-      _accounts = accounts.isNotEmpty ? accounts : _fallbackAccounts;
-      _recentTransactions = txs;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _accounts = accounts.isNotEmpty ? accounts : _fallbackAccounts;
+        _recentTransactions = txs;
+      });
+    }
   }
 
   // Fallback initial accounts if local SQLite has not yet synced from BigQuery
@@ -107,13 +106,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_secretTapCount >= 5) {
       _secretTapCount = 0;
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const DeveloperSettingsScreen()),
+        MaterialPageRoute<void>(builder: (_) => const DeveloperSettingsScreen()),
       );
     }
   }
 
   void _openQuickEntry() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -141,16 +140,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: ZivaTheme.gold500.withOpacity(0.2),
+                  color: ZivaTheme.gold500.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: ZivaTheme.gold500.withOpacity(0.4)),
+                  border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.4)),
                 ),
                 child: const Icon(Icons.diamond_outlined, color: ZivaTheme.gold400, size: 16),
               ),
               const SizedBox(width: 10),
-              Column(
+              const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text('ZIVA FINANCE', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
                   Text('COMMAND CENTER', style: TextStyle(fontSize: 9, color: ZivaTheme.textMuted, letterSpacing: 0.5)),
                 ],
@@ -163,7 +162,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.tune_rounded, color: ZivaTheme.textSecondary),
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DeveloperSettingsScreen()),
+                MaterialPageRoute<void>(builder: (_) => const DeveloperSettingsScreen()),
               );
             },
             tooltip: 'Developer Settings & OTA',
@@ -193,9 +192,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: ZivaTheme.gold500.withOpacity(0.12),
+                      color: ZivaTheme.gold500.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: ZivaTheme.gold500.withOpacity(0.35)),
+                      border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       children: [
@@ -279,10 +278,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Row(
+                      const Row(
                         children: [
-                          const Icon(Icons.shield_outlined, size: 14, color: ZivaTheme.emerald400),
-                          const SizedBox(width: 4),
+                          Icon(Icons.shield_outlined, size: 14, color: ZivaTheme.emerald400),
+                          SizedBox(width: 4),
                           Text(
                             'Secured with SQLite Offline Sync & Face ID',
                             style: TextStyle(fontSize: 11, color: ZivaTheme.textSecondary),
@@ -483,7 +482,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.15),
+                color: iconColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: iconColor, size: 20),

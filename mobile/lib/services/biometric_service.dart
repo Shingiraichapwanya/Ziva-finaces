@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -9,6 +10,7 @@ class BiometricService {
 
   /// Check whether biometric hardware is available on the device
   Future<bool> canAuthenticate() async {
+    if (kIsWeb) return false;
     try {
       final canCheck = await _auth.canCheckBiometrics;
       final isSupported = await _auth.isDeviceSupported();
@@ -20,6 +22,7 @@ class BiometricService {
 
   /// Get list of available biometric modalities (Face ID, Touch ID, etc.)
   Future<List<BiometricType>> getAvailableBiometrics() async {
+    if (kIsWeb) return <BiometricType>[];
     try {
       return await _auth.getAvailableBiometrics();
     } on PlatformException catch (_) {
@@ -31,6 +34,12 @@ class BiometricService {
   Future<bool> authenticate({
     String reason = 'Authenticate with Face ID to access your Ziva Finance portfolio and records',
   }) async {
+    // Web environments do not possess mobile Face ID / Touch ID hardware
+    if (kIsWeb) {
+      debugPrint('[BiometricService] Web target (kIsWeb) detected. Bypassing biometric check.');
+      return true;
+    }
+
     try {
       final isAvailable = await canAuthenticate();
       if (!isAvailable) {

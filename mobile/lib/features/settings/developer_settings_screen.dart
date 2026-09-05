@@ -6,6 +6,8 @@ import '../../services/biometric_service.dart';
 import '../../services/shorebird_service.dart';
 import '../../services/sqlite_service.dart';
 import '../../services/sync_engine.dart';
+import '../../core/constants/gcp_config.dart';
+import '../../services/bigquery_auth_service.dart';
 
 class DeveloperSettingsScreen extends StatefulWidget {
   const DeveloperSettingsScreen({super.key});
@@ -28,6 +30,29 @@ class _DeveloperSettingsScreenState extends State<DeveloperSettingsScreen> {
 
   Map<String, dynamic>? _backendHealth;
   bool _isProbingBackend = false;
+
+  Map<String, dynamic>? _testQueryResult;
+  bool _isRunningTestQuery = false;
+
+  Future<void> _executeBigQueryTestQuery() async {
+    setState(() => _isRunningTestQuery = true);
+    try {
+      final res = await _api.runBigQueryTestQuery();
+      if (mounted) {
+        setState(() {
+          _testQueryResult = res;
+          _isRunningTestQuery = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _testQueryResult = {'status': 'ERROR', 'error': e.toString()};
+          _isRunningTestQuery = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -145,7 +170,7 @@ class _DeveloperSettingsScreenState extends State<DeveloperSettingsScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: _shorebird.isShorebirdAvailable ? ZivaTheme.emeraldBg : ZivaTheme.gold500.withOpacity(0.15),
+                            color: _shorebird.isShorebirdAvailable ? ZivaTheme.emeraldBg : ZivaTheme.gold500.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
@@ -278,7 +303,7 @@ class _DeveloperSettingsScreenState extends State<DeveloperSettingsScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: isSynced ? ZivaTheme.emeraldBg : (isFailed ? ZivaTheme.roseBg : ZivaTheme.gold500.withOpacity(0.15)),
+                                  color: isSynced ? ZivaTheme.emeraldBg : (isFailed ? ZivaTheme.roseBg : ZivaTheme.gold500.withValues(alpha: 0.15)),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -301,14 +326,26 @@ class _DeveloperSettingsScreenState extends State<DeveloperSettingsScreen> {
 
             const SizedBox(height: 20),
 
-            // 3. BigQuery Backend Health Probe
-            _buildSectionHeader('BIGQUERY WAREHOUSE CONNECTION PROBE'),
+            // 3. BigQuery Backend Health Probe & Service Account Configuration
+            _buildSectionHeader('BIGQUERY WAREHOUSE AUTH & CONNECTION'),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Text('Service Account Identity', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: ZivaTheme.gold400)),
+                    const SizedBox(height: 6),
+                    const Text('Email: ${GcpConfig.serviceAccountEmail}', style: TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                    const Text('Project: ${GcpConfig.projectId} (${GcpConfig.location})', style: TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                    const Text('Dataset: ${GcpConfig.datasetId}', style: TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                    Text('IAM Roles: ${GcpConfig.assignedRoles.join(", ")}', style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: ZivaTheme.emerald400)),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Auth Mode: ${BigQueryAuthService.instance.isKeyLoaded ? "Direct Key (assets)" : "Secure Backend Proxy Gateway"}',
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: ZivaTheme.textMuted),
+                    ),
+                    const Divider(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -344,6 +381,66 @@ class _DeveloperSettingsScreenState extends State<DeveloperSettingsScreen> {
                       ),
                     ] else
                       const Text('Tap "Probe" to test connection to BigQuery express server', style: TextStyle(fontSize: 11, color: ZivaTheme.textMuted)),
+
+                    const Divider(height: 24),
+
+                    // BigQuery Test Query Action
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Live BigQuery SQL Query', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                            Text('Executes against fct_transactions', style: TextStyle(fontSize: 10, color: ZivaTheme.textMuted)),
+                          ],
+                        ),
+                        ElevatedButton(
+                          onPressed: _isRunningTestQuery ? null : _executeBigQueryTestQuery,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ZivaTheme.gold500,
+                            foregroundColor: Colors.black,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: _isRunningTestQuery
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                              : const Text('Run Test Query', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (_testQueryResult != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: ZivaTheme.bgSurface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.4)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Query Status: ${_testQueryResult!['status']}',
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: _testQueryResult!['status'] == 'SUCCESS' ? ZivaTheme.emerald400 : ZivaTheme.rose400,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_testQueryResult!['result'] != null) ...[
+                              Text('Transactions in BigQuery: ${_testQueryResult!['result']['total_transactions'] ?? 'N/A'}', style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                              Text('Total Volume (ZAR): R ${_testQueryResult!['result']['total_volume_zar'] ?? 'N/A'}', style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                              Text('Warehouse Time: ${_testQueryResult!['result']['query_time'] ?? ''}', style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: ZivaTheme.textMuted)),
+                            ] else if (_testQueryResult!['error'] != null) ...[
+                              Text('Error: ${_testQueryResult!['error']}', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: ZivaTheme.rose400)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ] else
+                      const Text('Tap "Run Test Query" to execute live SQL test query', style: TextStyle(fontSize: 11, color: ZivaTheme.textMuted)),
                   ],
                 ),
               ),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/theme/ziva_theme.dart';
@@ -50,7 +51,7 @@ class MainNavigationShell extends StatefulWidget {
 }
 
 class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsBindingObserver {
-  bool _isUnlocked = false;
+  bool _isUnlocked = kIsWeb; // Web starts directly unlocked
   bool _isBackgroundMasked = false;
   int _currentTabIndex = 0;
 
@@ -69,6 +70,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
   /// Monitor iOS/Android app lifecycle transitions
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Browser tab switching should not blur or lock the web session
+    if (kIsWeb) return;
+
     debugPrint('[LifecycleObserver] AppLifecycleState changed to: $state');
 
     // 1. When app is backgrounded or becoming inactive (user swipes up for App Switcher)
@@ -86,6 +90,16 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
   }
 
   Future<void> _handleAppResume() async {
+    if (kIsWeb) {
+      if (mounted) {
+        setState(() {
+          _isBackgroundMasked = false;
+          _isUnlocked = true;
+        });
+      }
+      return;
+    }
+
     // If the app was unlocked, lock it and prompt for Face ID re-authentication
     if (_isUnlocked) {
       final authenticated = await BiometricService.instance.authenticate(
@@ -147,7 +161,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
               child: NavigationBar(
                 selectedIndex: _currentTabIndex,
                 backgroundColor: ZivaTheme.bgSurface,
-                indicatorColor: ZivaTheme.gold500.withOpacity(0.2),
+                indicatorColor: ZivaTheme.gold500.withValues(alpha: 0.2),
                 onDestinationSelected: (idx) => setState(() => _currentTabIndex = idx),
                 destinations: [
                   const NavigationDestination(

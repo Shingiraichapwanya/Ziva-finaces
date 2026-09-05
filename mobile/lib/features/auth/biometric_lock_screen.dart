@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/ziva_theme.dart';
 import '../../services/biometric_service.dart';
@@ -24,7 +25,15 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    // Prompt for biometrics immediately upon display
+    // On Web, bypass biometric scanning automatically
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onAuthenticated();
+      });
+      return;
+    }
+
+    // Prompt for biometrics immediately upon display on mobile
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _triggerBiometrics();
     });
@@ -37,6 +46,11 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
   }
 
   Future<void> _triggerBiometrics() async {
+    if (kIsWeb) {
+      widget.onAuthenticated();
+      return;
+    }
+
     if (_isAuthenticating) return;
     setState(() {
       _isAuthenticating = true;
@@ -85,10 +99,10 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: ZivaTheme.gold500.withOpacity(0.5)),
+                  border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.5)),
                   boxShadow: [
                     BoxShadow(
-                      color: ZivaTheme.gold500.withOpacity(0.2),
+                      color: ZivaTheme.gold500.withValues(alpha: 0.2),
                       blurRadius: 15,
                     ),
                   ],
@@ -110,7 +124,7 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
               ),
               const SizedBox(height: 6),
               const Text(
-                'PORTFOLIO ENCRYPTION ACTIVE',
+                kIsWeb ? 'WEB PREVIEW • BIOMETRICS BYPASS' : 'PORTFOLIO ENCRYPTION ACTIVE',
                 style: TextStyle(
                   color: ZivaTheme.textMuted,
                   fontSize: 11,
@@ -133,10 +147,10 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: ZivaTheme.bgSurface,
-                      border: Border.all(color: ZivaTheme.gold500.withOpacity(0.4), width: 2),
+                      border: Border.all(color: ZivaTheme.gold500.withValues(alpha: 0.4), width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: ZivaTheme.gold500.withOpacity(0.25),
+                          color: ZivaTheme.gold500.withValues(alpha: 0.25),
                           blurRadius: 25,
                           spreadRadius: 2,
                         ),
@@ -144,7 +158,7 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
                     ),
                     child: Center(
                       child: Icon(
-                        Icons.fingerprint_rounded,
+                        kIsWeb ? Icons.lock_open_rounded : Icons.fingerprint_rounded,
                         color: _errorMessage != null ? ZivaTheme.rose400 : ZivaTheme.gold400,
                         size: 52,
                       ),
@@ -156,7 +170,9 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
               const SizedBox(height: 24),
 
               Text(
-                _isAuthenticating ? 'Scanning Face ID...' : 'Touch sensor or glance to unlock',
+                kIsWeb
+                    ? 'Web environment detected. Tap Unlock to enter.'
+                    : (_isAuthenticating ? 'Scanning Face ID...' : 'Touch sensor or glance to unlock'),
                 style: const TextStyle(
                   color: ZivaTheme.textSecondary,
                   fontSize: 14,
@@ -171,7 +187,7 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
                   decoration: BoxDecoration(
                     color: ZivaTheme.roseBg,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: ZivaTheme.rose500.withOpacity(0.4)),
+                    border: Border.all(color: ZivaTheme.rose500.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     _errorMessage!,
@@ -183,13 +199,13 @@ class _BiometricLockScreenState extends State<BiometricLockScreen> with SingleTi
 
               const Spacer(flex: 3),
 
-              // Manual Retry Button
+              // Unlock Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _triggerBiometrics,
                   icon: const Icon(Icons.lock_open_rounded, size: 18),
-                  label: const Text('Unlock with Face ID / Passcode'),
+                  label: const Text(kIsWeb ? 'Unlock Dashboard (Web Demo)' : 'Unlock with Face ID / Passcode'),
                 ),
               ),
 

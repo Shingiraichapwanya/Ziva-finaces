@@ -28,20 +28,28 @@ class AccountModel {
   });
 
   factory AccountModel.fromJson(Map<String, dynamic> json) {
+    final rawBalance = json['nativeBalance'] ?? json['native_balance'] ?? 0.0;
+    final double balance = rawBalance is num
+        ? rawBalance.toDouble()
+        : double.tryParse(rawBalance.toString()) ?? 0.0;
+
+    final rawNoticeDays = json['withdrawalNoticeDays'] ?? json['withdrawal_notice_days'] ?? 0;
+    final int noticeDays = rawNoticeDays is int
+        ? rawNoticeDays
+        : int.tryParse(rawNoticeDays.toString()) ?? 0;
+
     return AccountModel(
-      accountId: json['accountId'] ?? json['account_id'] ?? '',
-      accountName: json['accountName'] ?? json['account_name'] ?? '',
-      financialInstitution: json['financialInstitution'] ?? json['financial_institution'] ?? '',
-      countryCode: json['countryCode'] ?? json['country_code'] ?? 'ZA',
-      primaryCurrency: json['primaryCurrency'] ?? json['primary_currency'] ?? 'ZAR',
-      cashFlowTier: json['cashFlowTier'] ?? json['cash_flow_tier'] ?? 'DAILY_SPENDING',
-      accountType: json['accountType'] ?? json['account_type'] ?? 'CHECKING',
+      accountId: (json['accountId'] ?? json['account_id'] ?? '').toString(),
+      accountName: (json['accountName'] ?? json['account_name'] ?? '').toString(),
+      financialInstitution: (json['financialInstitution'] ?? json['financial_institution'] ?? '').toString(),
+      countryCode: (json['countryCode'] ?? json['country_code'] ?? 'ZA').toString(),
+      primaryCurrency: (json['primaryCurrency'] ?? json['primary_currency'] ?? 'ZAR').toString(),
+      cashFlowTier: (json['cashFlowTier'] ?? json['cash_flow_tier'] ?? 'DAILY_SPENDING').toString(),
+      accountType: (json['accountType'] ?? json['account_type'] ?? 'CHECKING').toString(),
       isVaultLocked: json['isVaultLocked'] == true || json['is_vault_locked'] == 1,
-      withdrawalNoticeDays: (json['withdrawalNoticeDays'] ?? json['withdrawal_notice_days'] ?? 0) is int
-          ? (json['withdrawalNoticeDays'] ?? json['withdrawal_notice_days'] ?? 0)
-          : int.tryParse((json['withdrawalNoticeDays'] ?? json['withdrawal_notice_days'] ?? '0').toString()) ?? 0,
-      accountNumberMasked: json['accountNumberMasked'] ?? json['account_number_masked'] ?? '****',
-      nativeBalance: (json['nativeBalance'] ?? json['native_balance'] ?? 0.0).toDouble(),
+      withdrawalNoticeDays: noticeDays,
+      accountNumberMasked: (json['accountNumberMasked'] ?? json['account_number_masked'] ?? '****').toString(),
+      nativeBalance: balance,
       isActive: json['isActive'] == null ? true : (json['isActive'] == true || json['is_active'] == 1),
     );
   }

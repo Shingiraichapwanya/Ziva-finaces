@@ -1,0 +1,92 @@
+[
+  {
+    "date": "2026-02-02",
+    "description": "SALARY CLIENT RETAINER INFLOW",
+    "amount": 45000.0,
+    "balance": 67500.0,
+    "currency": "ZAR",
+    "category": "CAT_INCOME_SALARY",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  },
+  {
+    "date": "2026-02-04",
+    "description": "CAPITEC EFT PAYMENT",
+    "amount": -1250.0,
+    "balance": 66250.0,
+    "currency": "ZAR",
+    "category": "CAT_TRANSFER_EFT",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  },
+  {
+    "date": "2026-02-07",
+    "description": "WOOLWORTHS V&A WATERFRONT GROCERIES",
+    "amount": -850.5,
+    "balance": 65399.5,
+    "currency": "ZAR",
+    "category": "CAT_GROCERIES",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  },
+  {
+    "date": "2026-02-10",
+    "description": "CHECKERS SEA POINT FOOD SUPPLIES",
+    "amount": -620.0,
+    "balance": 64779.5,
+    "currency": "ZAR",
+    "category": "CAT_GROCERIES",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  },
+  {
+    "date": "2026-02-14",
+    "description": "DELL TECHNOLOGIES DEV MONITOR INV-DELL",
+    "amount": -4500.0,
+    "balance": 60279.5,
+    "currency": "ZAR",
+    "category": "CAT_TECH_HARDWARE",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": true
+  },
+  {
+    "date": "2026-02-18",
+    "description": "AWS CLOUD HOSTING SERVICES #AWS2026",
+    "amount": -1850.0,
+    "balance": 58429.5,
+    "currency": "ZAR",
+    "category": "CAT_SOFTWARE_SAAS",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": true
+  },
+  {
+    "date": "2026-02-22",
+    "description": "UBER RIDE TRIP AIRPORT",
+    "amount": -245.0,
+    "balance": 58184.5,
+    "currency": "ZAR",
+    "category": "CAT_TRANSPORT_COMMUTE",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  },
+  {
+    "date": "2026-02-26",
+    "description": "MONTHLY RESIDENTIAL APARTMENT LEASE",
+    "amount": -14500.0,
+    "balance": 43684.5,
+    "currency": "ZAR",
+    "category": "CAT_RENT_MORTGAGE",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  },
+  {
+    "date": "2026-02-28",
+    "description": "STANDARD BANK SERVICE MONTHLY FEE",
+    "amount": -115.0,
+    "balance": 43569.5,
+    "currency": "ZAR",
+    "category": "CAT_BANK_CHARGES",
+    "account": "Standard Bank Cheque",
+    "is_tax_deductible": false
+  }
+]

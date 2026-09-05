@@ -30,6 +30,7 @@ dependencies:
   intl: ^0.20.2
   uuid: ^4.5.1
   shared_preferences: ^2.3.5
+  sqflite_common_ffi_web: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -42,3 +43,4 @@ flutter:
   assets:
     - assets/icons/
     - assets/images/
+    - assets/credentials/

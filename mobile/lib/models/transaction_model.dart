@@ -17,6 +17,8 @@ class TransactionModel {
   final String notes;
   final List<String> tags;
   final bool isSynced; // Local SQLite tracking flag
+  final String? receiptName;
+  final String? receiptUrl;
 
   TransactionModel({
     required this.transactionId,
@@ -35,28 +37,71 @@ class TransactionModel {
     this.notes = '',
     this.tags = const ['mobile_app'],
     this.isSynced = true,
+    this.receiptName,
+    this.receiptUrl,
   });
 
+  bool get hasReceipt =>
+      (receiptName != null && receiptName!.isNotEmpty) ||
+      (receiptUrl != null && receiptUrl!.isNotEmpty);
+
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
+    final rawOrigAmount = json['originalAmount'] ?? json['original_amount'] ?? 0.0;
+    final double origAmount = rawOrigAmount is num
+        ? rawOrigAmount.toDouble()
+        : double.tryParse(rawOrigAmount.toString()) ?? 0.0;
+
+    final rawZarAmount = json['reportingAmountZar'] ?? json['reporting_amount_zar'] ?? 0.0;
+    final double zarAmount = rawZarAmount is num
+        ? rawZarAmount.toDouble()
+        : double.tryParse(rawZarAmount.toString()) ?? 0.0;
+
+    final rawUsdAmount = json['reportingAmountUsd'] ?? json['reporting_amount_usd'] ?? 0.0;
+    final double usdAmount = rawUsdAmount is num
+        ? rawUsdAmount.toDouble()
+        : double.tryParse(rawUsdAmount.toString()) ?? 0.0;
+
+    List<String> parsedTags;
+    final rawTags = json['tags'];
+    if (rawTags is String) {
+      try {
+        final decoded = jsonDecode(rawTags);
+        if (decoded is Iterable) {
+          parsedTags = decoded.map((e) => e.toString()).toList();
+        } else {
+          parsedTags = ['mobile_app'];
+        }
+      } catch (_) {
+        parsedTags = ['mobile_app'];
+      }
+    } else if (rawTags is Iterable) {
+      parsedTags = rawTags.map((e) => e.toString()).toList();
+    } else {
+      parsedTags = ['mobile_app'];
+    }
+
+    final String? rName = (json['receiptName'] ?? json['receipt_name'])?.toString();
+    final String? rUrl = (json['receiptUrl'] ?? json['receipt_url'])?.toString();
+
     return TransactionModel(
-      transactionId: json['transactionId'] ?? json['transaction_id'] ?? '',
-      transactionDate: json['transactionDate'] ?? json['transaction_date'] ?? DateTime.now().toIso8601String().split('T')[0],
-      accountId: json['accountId'] ?? json['account_id'] ?? '',
-      categoryId: json['categoryId'] ?? json['category_id'] ?? 'CAT_GENERAL',
-      categoryName: json['categoryName'] ?? json['category_name'] ?? 'General',
-      transactionType: json['transactionType'] ?? json['transaction_type'] ?? 'EXPENSE',
-      originalAmount: (json['originalAmount'] ?? json['original_amount'] ?? 0.0).toDouble(),
-      originalCurrency: json['originalCurrency'] ?? json['original_currency'] ?? 'ZAR',
-      reportingAmountZar: (json['reportingAmountZar'] ?? json['reporting_amount_zar'] ?? 0.0).toDouble(),
-      reportingAmountUsd: (json['reportingAmountUsd'] ?? json['reporting_amount_usd'] ?? 0.0).toDouble(),
-      merchantOrPayee: json['merchantOrPayee'] ?? json['merchant_or_payee'] ?? 'Direct Entry',
-      paymentMethod: json['paymentMethod'] ?? json['payment_method'] ?? 'EFT/Card',
+      transactionId: (json['transactionId'] ?? json['transaction_id'] ?? '').toString(),
+      transactionDate: (json['transactionDate'] ?? json['transaction_date'] ?? DateTime.now().toIso8601String().split('T')[0]).toString(),
+      accountId: (json['accountId'] ?? json['account_id'] ?? '').toString(),
+      categoryId: (json['categoryId'] ?? json['category_id'] ?? 'CAT_GENERAL').toString(),
+      categoryName: (json['categoryName'] ?? json['category_name'] ?? 'General').toString(),
+      transactionType: (json['transactionType'] ?? json['transaction_type'] ?? 'EXPENSE').toString(),
+      originalAmount: origAmount,
+      originalCurrency: (json['originalCurrency'] ?? json['original_currency'] ?? 'ZAR').toString(),
+      reportingAmountZar: zarAmount,
+      reportingAmountUsd: usdAmount,
+      merchantOrPayee: (json['merchantOrPayee'] ?? json['merchant_or_payee'] ?? 'Direct Entry').toString(),
+      paymentMethod: (json['paymentMethod'] ?? json['payment_method'] ?? 'EFT/Card').toString(),
       isTaxDeductible: json['isTaxDeductible'] == 1 || json['isTaxDeductible'] == true || json['is_tax_deductible'] == true,
-      notes: json['notes'] ?? '',
-      tags: json['tags'] is String
-          ? List<String>.from(jsonDecode(json['tags']))
-          : (json['tags'] is List ? List<String>.from(json['tags']) : ['mobile_app']),
+      notes: (json['notes'] ?? '').toString(),
+      tags: parsedTags,
       isSynced: json['is_synced'] == null ? true : (json['is_synced'] == 1 || json['is_synced'] == true),
+      receiptName: rName,
+      receiptUrl: rUrl,
     );
   }
 
@@ -77,6 +122,8 @@ class TransactionModel {
       'isTaxDeductible': isTaxDeductible,
       'notes': notes,
       'tags': tags,
+      'receiptName': receiptName,
+      'receiptUrl': receiptUrl,
     };
   }
 
@@ -98,6 +145,50 @@ class TransactionModel {
       'notes': notes,
       'tags': jsonEncode(tags),
       'is_synced': isSynced ? 1 : 0,
+      'receipt_name': receiptName,
+      'receipt_url': receiptUrl,
     };
+  }
+
+  TransactionModel copyWith({
+    String? transactionId,
+    String? transactionDate,
+    String? accountId,
+    String? categoryId,
+    String? categoryName,
+    String? transactionType,
+    double? originalAmount,
+    String? originalCurrency,
+    double? reportingAmountZar,
+    double? reportingAmountUsd,
+    String? merchantOrPayee,
+    String? paymentMethod,
+    bool? isTaxDeductible,
+    String? notes,
+    List<String>? tags,
+    bool? isSynced,
+    String? receiptName,
+    String? receiptUrl,
+  }) {
+    return TransactionModel(
+      transactionId: transactionId ?? this.transactionId,
+      transactionDate: transactionDate ?? this.transactionDate,
+      accountId: accountId ?? this.accountId,
+      categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
+      transactionType: transactionType ?? this.transactionType,
+      originalAmount: originalAmount ?? this.originalAmount,
+      originalCurrency: originalCurrency ?? this.originalCurrency,
+      reportingAmountZar: reportingAmountZar ?? this.reportingAmountZar,
+      reportingAmountUsd: reportingAmountUsd ?? this.reportingAmountUsd,
+      merchantOrPayee: merchantOrPayee ?? this.merchantOrPayee,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      isTaxDeductible: isTaxDeductible ?? this.isTaxDeductible,
+      notes: notes ?? this.notes,
+      tags: tags ?? this.tags,
+      isSynced: isSynced ?? this.isSynced,
+      receiptName: receiptName ?? this.receiptName,
+      receiptUrl: receiptUrl ?? this.receiptUrl,
+    );
   }
 }
