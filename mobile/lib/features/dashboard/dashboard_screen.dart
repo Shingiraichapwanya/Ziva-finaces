@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/config/app_environment.dart';
 import '../../core/theme/ziva_theme.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../models/account_model.dart';
@@ -59,24 +60,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           financialInstitution: 'First National Bank',
           countryCode: 'ZA',
           primaryCurrency: 'ZAR',
-          cashFlowTier: 'MONTHLY_ALLOCATION',
+          cashFlowTier: 'MONTHLY_OPERATIONAL',
           accountType: 'CHECKING',
-          nativeBalance: 32800.00,
+          nativeBalance: 42300.00,
         ),
         AccountModel(
-          accountId: 'ACC_ZA_DISCOVERY_VAULT',
-          accountName: 'Discovery 32-Day Notice',
-          financialInstitution: 'Discovery Bank',
-          countryCode: 'ZA',
-          primaryCurrency: 'ZAR',
-          cashFlowTier: 'LONG_TERM_VAULT',
+          accountId: 'ACC_US_WISE_GLOBAL',
+          accountName: 'Wise Global Multi-Currency',
+          financialInstitution: 'Wise Europe SA',
+          countryCode: 'US',
+          primaryCurrency: 'USD',
+          cashFlowTier: 'MONTHLY_OPERATIONAL',
           accountType: 'SAVINGS',
-          nativeBalance: 150000.00,
+          nativeBalance: 3200.00,
         ),
         AccountModel(
-          accountId: 'ACC_ZA_EE_EQUITIES_VAULT',
-          accountName: 'EasyEquities S&P500 & Top40 TFSA',
-          financialInstitution: 'EasyEquities',
+          accountId: 'ACC_ZA_EASY_EQUITIES',
+          accountName: 'EasyEquities Wealth Vault',
+          financialInstitution: 'EasyEquities / FirstRand',
           countryCode: 'ZA',
           primaryCurrency: 'ZAR',
           cashFlowTier: 'LONG_TERM_VAULT',
@@ -147,11 +148,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: const Icon(Icons.diamond_outlined, color: ZivaTheme.gold400, size: 16),
               ),
               const SizedBox(width: 10),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('ZIVA FINANCE', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
-                  Text('COMMAND CENTER', style: TextStyle(fontSize: 9, color: ZivaTheme.textMuted, letterSpacing: 0.5)),
+                  Row(
+                    children: [
+                      const Text(
+                        'ZIVA FINANCE',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1.0),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppEnvironment.badgeBgColor,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppEnvironment.badgeBorderColor, width: 0.8),
+                        ),
+                        child: Text(
+                          AppEnvironment.name,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                            color: AppEnvironment.accentColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Text('COMMAND CENTER', style: TextStyle(fontSize: 9, color: ZivaTheme.textMuted, letterSpacing: 0.5)),
                 ],
               ),
             ],

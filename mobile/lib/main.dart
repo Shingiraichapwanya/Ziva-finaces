@@ -1,8 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'core/config/app_environment.dart';
 import 'core/theme/ziva_theme.dart';
-import 'features/auth/biometric_lock_screen.dart';
+import 'features/auth/access_guard_screen.dart';
 import 'features/auth/privacy_shield.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/ledger/ledger_screen.dart';
@@ -35,8 +36,8 @@ class ZivaFinanceMobileApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ziva Finance',
-      debugShowCheckedModeBanner: false,
+      title: AppEnvironment.isStaging ? 'Ziva Finance (Staging)' : 'Ziva Finance',
+      debugShowCheckedModeBanner: AppEnvironment.isStaging,
       theme: ZivaTheme.darkTheme,
       home: const MainNavigationShell(),
     );
@@ -51,7 +52,8 @@ class MainNavigationShell extends StatefulWidget {
 }
 
 class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsBindingObserver {
-  bool _isUnlocked = kIsWeb; // Web starts directly unlocked
+  // Always start locked to enforce Access Guard in Live environment
+  bool _isUnlocked = false;
   bool _isBackgroundMasked = false;
   int _currentTabIndex = 0;
 
@@ -131,9 +133,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Main App Shell or Startup Biometric Lock Screen
+        // Main App Shell or Startup Access Guard Gate
         if (!_isUnlocked)
-          BiometricLockScreen(
+          AccessGuardScreen(
             onAuthenticated: () {
               setState(() {
                 _isUnlocked = true;
@@ -143,14 +145,43 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
           )
         else
           Scaffold(
-            body: IndexedStack(
-              index: _currentTabIndex,
+            body: Column(
               children: [
-                DashboardScreen(
-                  onNavigateToLedger: () => setState(() => _currentTabIndex = 1),
+                // Top Staging Advisory Banner
+                if (AppEnvironment.isStaging)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    color: const Color(0xFFF59E0B),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.warning_amber_rounded, size: 14, color: Colors.black),
+                        SizedBox(width: 8),
+                        Text(
+                          'STAGING SANDBOX ENVIRONMENT • MOCK TELEMETRY ACTIVE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Expanded(
+                  child: IndexedStack(
+                    index: _currentTabIndex,
+                    children: [
+                      DashboardScreen(
+                        onNavigateToLedger: () => setState(() => _currentTabIndex = 1),
+                      ),
+                      const LedgerScreen(),
+                      const DeveloperSettingsScreen(),
+                    ],
+                  ),
                 ),
-                const LedgerScreen(),
-                const DeveloperSettingsScreen(),
               ],
             ),
             bottomNavigationBar: Container(

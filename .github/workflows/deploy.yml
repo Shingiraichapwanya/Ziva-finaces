@@ -48,8 +48,8 @@ jobs:
         run: flutter test
         working-directory: mobile
 
-      - name: Build web release
-        run: flutter build web --release --base-href /Ziva-finaces/
+      - name: Build web release (minified & source maps stripped)
+        run: flutter build web --release --no-source-maps --base-href /Ziva-finaces/
         working-directory: mobile
 
       - name: Configure 404 fallback for SPA routing and disable Jekyll

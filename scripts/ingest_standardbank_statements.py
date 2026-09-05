@@ -3,7 +3,7 @@
 ingest_standardbank_statements.py
 
 Ingests recent bank statements from Gmail, extracts attachments (handling nested .zip archives),
-decrypts password-protected PDF files using password 'GN463385', and extracts structured
+decrypts password-protected PDF files using secure environment credentials, and extracts structured
 transaction records into ./output/statements.json.
 
 Compatible with Python 3.10+ and executes in Antigravity IDE.
@@ -20,8 +20,8 @@ import subprocess
 from datetime import datetime
 from pypdf import PdfReader, PdfWriter
 
-# Security: Default to requested password with environment variable override
-PDF_PASSWORD = os.getenv("BANK_PDF_PASSWORD", "GN463385")
+# Security: Ingest password strictly from environment variable or GitHub Secrets
+PDF_PASSWORD = os.getenv("BANK_PDF_PASSWORD")
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output")
 STATEMENTS_JSON_PATH = os.path.join(OUTPUT_DIR, "statements.json")
@@ -230,9 +230,12 @@ def fetch_and_unlock_statements():
                         # Decrypt PDF
                         reader = PdfReader(io.BytesIO(data))
                         if reader.is_encrypted:
+                            if not PDF_PASSWORD:
+                                print(f"[Decryption Error] {filename} is encrypted, but BANK_PDF_PASSWORD environment variable / secret is not set.")
+                                continue
                             unlocked = reader.decrypt(PDF_PASSWORD)
                             if not unlocked:
-                                print(f"[Decryption Error] Failed to unlock {filename} with password.")
+                                print(f"[Decryption Error] Failed to unlock {filename} with provided password.")
                                 continue
                             unlocked_count += 1
                             print(f"[Decryption Success] Successfully unlocked {filename} with password.")

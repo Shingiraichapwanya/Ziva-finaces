@@ -1,12 +1,12 @@
 {
-    "name": "ziva_finance",
-    "short_name": "ziva_finance",
+    "name": "Ziva Finance",
+    "short_name": "Ziva",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0B0E14",
+    "theme_color": "#0B0E14",
+    "description": "Ziva Finance - Executive Wealth & Personal Budget Command Center",
+    "orientation": "portrait",
     "prefer_related_applications": false,
     "icons": [
         {

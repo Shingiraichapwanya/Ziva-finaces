@@ -22,11 +22,13 @@ class GmailReceiptParser {
    * Main entry point for time-driven triggers.
    * Scans Gmail inbox for receipt/invoice emails, archives PDFs to GCS, and ingests to BigQuery.
    * @param {string} [customQuery] Optional search query override
+   * @param {number} [maxThreads] Optional max threads override
    * @returns {Array<object>} List of ingested transaction results
    */
-  static scanIncomingReceipts(customQuery) {
+  static scanIncomingReceipts(customQuery, maxThreads) {
     const query = customQuery || GMAIL_CONFIG.defaultQuery;
-    console.log(`[GmailParser] Initiating inbox scan with query: "${query}"`);
+    const limit = maxThreads || GMAIL_CONFIG.maxThreadsPerRun;
+    console.log(`[GmailParser] Initiating inbox scan with query: "${query}", maxThreads: ${limit}`);
 
     // In Apps Script environment, retrieve or create processed label
     let processedLabel = null;
@@ -35,7 +37,7 @@ class GmailReceiptParser {
     }
 
     const threads = typeof GmailApp !== 'undefined'
-      ? GmailApp.search(query, 0, GMAIL_CONFIG.maxThreadsPerRun)
+      ? GmailApp.search(query, 0, limit)
       : [];
 
     console.log(`[GmailParser] Found ${threads.length} matching email threads.`);
@@ -72,6 +74,19 @@ class GmailReceiptParser {
 
     console.log(`[GmailParser] Finished run. Successfully ingested ${results.length} receipts.`);
     return results;
+  }
+
+  /**
+   * Retrospective sweep from January 1st, 2026 to today.
+   * Scans both incoming vendor receipts/invoices and outgoing invoices sent to clients.
+   * @param {string} [startDate='2026/01/01'] Start date filter (YYYY/MM/DD)
+   * @param {number} [maxThreads=100] Maximum threads to process
+   * @returns {Array<object>} List of ingested transaction results
+   */
+  static runHistoricalSweep(startDate = '2026/01/01', maxThreads = 100) {
+    const historicalQuery = `after:${startDate} has:attachment filename:pdf (invoice OR receipt OR "payment confirmation" OR "payment advice" OR "tax invoice" OR statement OR "client invoice") -label:ZivaBudget/Processed`;
+    console.log(`[GmailParser] Running historical retrospective sweep with query: "${historicalQuery}", limit: ${maxThreads}`);
+    return this.scanIncomingReceipts(historicalQuery, maxThreads);
   }
 
   /**
@@ -132,13 +147,17 @@ class GmailReceiptParser {
       accountId = 'ACC_ZW_ECOCASH_ZIG';
     }
 
-    // 5. Construct transaction record
+    // 5. Construct transaction record (differentiate incoming expenses vs outgoing client invoices)
+    const isOutgoing = extraction.isOutgoingClientInvoice;
+    const originalAmount = isOutgoing ? Math.abs(extraction.amount) : -Math.abs(extraction.amount);
+    const txType = isOutgoing ? 'INCOME' : 'EXPENSE';
+
     const txData = {
       transactionId: txId,
       transactionDate: dateStr,
-      originalAmount: -Math.abs(extraction.amount), // Outflow / Expense
+      originalAmount: originalAmount,
       originalCurrency: extraction.currency,
-      transactionType: 'EXPENSE',
+      transactionType: txType,
       merchantOrPayee: extraction.merchant,
       categoryId: extraction.categoryId,
       cashFlowTier: extraction.cashFlowTier,
@@ -148,10 +167,11 @@ class GmailReceiptParser {
       taxInvoiceNumber: extraction.taxInvoiceNumber,
       notes: `${subject.substring(0, 100)} | Attached: ${fileName}`,
       tags: [
-        'email_receipt',
+        isOutgoing ? 'client_invoice' : 'email_receipt',
+        isOutgoing ? 'business_income' : 'expense',
         'gmail_ingest',
         'pdf_attached',
-        extraction.isTaxDeductible ? 'tax_deductible' : 'standard_expense'
+        extraction.isTaxDeductible ? 'tax_deductible' : (isOutgoing ? 'taxable_revenue' : 'standard_expense')
       ],
       receiptName: fileName,
       receiptUrl: receiptUrl,
@@ -264,14 +284,22 @@ class GmailReceiptParser {
       taxInvoiceNumber = invMatch[1].toUpperCase();
     }
 
-    // 4. Tax Deductibility Detection
-    const isTaxDeductible = /\b(tax invoice|vat invoice|tax deductible|business expense|work|consulting|aws|cloud|software|hardware|server|hosting|office)\b/i.test(combined);
+    // 4. Detect Outgoing Client Invoices vs Incoming Vendor Bills
+    const isOutgoingClientInvoice = /\b(client invoice|invoice to|consulting invoice|services rendered|billed to|our invoice)\b/i.test(combined) ||
+      /\b(attached is (our|my) invoice|please find attached (our|my)?\s*invoice)\b/i.test(bodyText) ||
+      /^from:\s*me\b/i.test(from);
 
-    // 5. Category and Cash Flow Tier
+    // 5. Tax Deductibility Detection
+    const isTaxDeductible = !isOutgoingClientInvoice && /\b(tax invoice|vat invoice|tax deductible|business expense|work|consulting|aws|cloud|software|hardware|server|hosting|office)\b/i.test(combined);
+
+    // 6. Category and Cash Flow Tier
     let categoryId = 'CAT_DAILY_GROCERIES';
     let cashFlowTier = 'DAILY_SPENDING';
 
-    if (/\b(aws|amazon web services|cloud|google cloud|github|hosting|digitalocean|openai|anthropic|server)\b/i.test(combined)) {
+    if (isOutgoingClientInvoice) {
+      categoryId = 'CAT_CLIENT_REVENUE';
+      cashFlowTier = 'OPERATIONAL_INCOME';
+    } else if (/\b(aws|amazon web services|cloud|google cloud|github|hosting|digitalocean|openai|anthropic|server)\b/i.test(combined)) {
       categoryId = 'CAT_PROD_SOFTWARE_TOOLS';
       cashFlowTier = 'MONTHLY_ALLOCATION';
     } else if (/\b(hardware|laptop|monitor|computer|keyboard|electronics|dell|apple)\b/i.test(combined)) {
@@ -298,6 +326,7 @@ class GmailReceiptParser {
       categoryId,
       cashFlowTier,
       isTaxDeductible,
+      isOutgoingClientInvoice,
       taxInvoiceNumber
     };
   }
