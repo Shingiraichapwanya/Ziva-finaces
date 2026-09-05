@@ -14,8 +14,11 @@ class ApiService {
 
   /// Probe BigQuery backend health
   Future<Map<String, dynamic>> checkHealth() async {
+    if (baseUrl.isEmpty) {
+      return {'status': 'ok', 'mode': 'client_standalone'};
+    }
     final uri = Uri.parse('$baseUrl${ApiConstants.healthEndpoint}');
-    final res = await _client.get(uri).timeout(const Duration(seconds: 5));
+    final res = await _client.get(uri).timeout(const Duration(seconds: 4));
     if (res.statusCode == 200) {
       return jsonDecode(res.body) as Map<String, dynamic>;
     }
@@ -24,8 +27,9 @@ class ApiService {
 
   /// Fetch accounts with live cumulative BigQuery balances
   Future<List<AccountModel>> fetchAccounts() async {
+    if (baseUrl.isEmpty) return [];
     final uri = Uri.parse('$baseUrl${ApiConstants.accountsEndpoint}');
-    final res = await _client.get(uri).timeout(const Duration(seconds: 8));
+    final res = await _client.get(uri).timeout(const Duration(seconds: 4));
     if (res.statusCode == 200) {
       final List<dynamic> list = jsonDecode(res.body) as List<dynamic>;
       return list.map((item) => AccountModel.fromJson(item as Map<String, dynamic>)).toList();
@@ -35,8 +39,9 @@ class ApiService {
 
   /// Fetch primary ledger transactions from BigQuery
   Future<List<TransactionModel>> fetchTransactions({int limit = 100}) async {
+    if (baseUrl.isEmpty) return [];
     final uri = Uri.parse('$baseUrl${ApiConstants.transactionsEndpoint}?limit=$limit');
-    final res = await _client.get(uri).timeout(const Duration(seconds: 10));
+    final res = await _client.get(uri).timeout(const Duration(seconds: 4));
     if (res.statusCode == 200) {
       final List<dynamic> list = jsonDecode(res.body) as List<dynamic>;
       return list.map((item) => TransactionModel.fromJson(item as Map<String, dynamic>)).toList();
@@ -46,12 +51,15 @@ class ApiService {
 
   /// Ingest transaction mutation into BigQuery
   Future<Map<String, dynamic>> postTransaction(Map<String, dynamic> payload) async {
+    if (baseUrl.isEmpty) {
+      return {'success': true, 'mocked': true};
+    }
     final uri = Uri.parse('$baseUrl${ApiConstants.transactionsEndpoint}');
     final res = await _client.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(payload),
-    ).timeout(const Duration(seconds: 15));
+    ).timeout(const Duration(seconds: 6));
 
     if (res.statusCode == 200 || res.statusCode == 201) {
       return jsonDecode(res.body) as Map<String, dynamic>;

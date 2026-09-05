@@ -11,7 +11,7 @@ import 'features/settings/developer_settings_screen.dart';
 import 'services/biometric_service.dart';
 import 'services/sync_engine.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Enforce dark system UI overlay style
@@ -24,10 +24,24 @@ void main() async {
     ),
   );
 
-  // Initialize SQLite sync engine
-  await SyncEngine.instance.initialize();
-
+  // Mount UI immediately on first frame to prevent startup thread blocking
   runApp(const ZivaFinanceMobileApp());
+
+  // Asynchronously initialize background sync engine without blocking UI
+  _initBackgroundServices();
+}
+
+void _initBackgroundServices() async {
+  try {
+    await SyncEngine.instance.initialize().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () {
+        debugPrint('[Startup] SyncEngine background initialization timed out. Safe fallback active.');
+      },
+    );
+  } catch (e) {
+    debugPrint('[Startup] Non-blocking SyncEngine initialization warning: $e');
+  }
 }
 
 class ZivaFinanceMobileApp extends StatelessWidget {

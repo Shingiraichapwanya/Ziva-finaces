@@ -8,7 +8,10 @@ class ApiConstants {
     if (fromEnv.isNotEmpty) return fromEnv;
 
     if (kIsWeb) {
-      return 'http://localhost:3001';
+      if (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1' || Uri.base.host.isEmpty) {
+        return 'http://localhost:3001';
+      }
+      return '';
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {

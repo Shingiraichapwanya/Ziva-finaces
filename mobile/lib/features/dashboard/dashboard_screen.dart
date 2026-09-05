@@ -31,14 +31,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboardData() async {
-    final accounts = await SqliteService.instance.getLocalAccounts();
-    final txs = await SqliteService.instance.getTransactions(limit: 5);
+    try {
+      final accounts = await SqliteService.instance.getLocalAccounts().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => _fallbackAccounts,
+      );
+      final txs = await SqliteService.instance.getTransactions(limit: 5).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => [],
+      );
 
-    if (mounted) {
-      setState(() {
-        _accounts = accounts.isNotEmpty ? accounts : _fallbackAccounts;
-        _recentTransactions = txs;
-      });
+      if (mounted) {
+        setState(() {
+          _accounts = accounts.isNotEmpty ? accounts : _fallbackAccounts;
+          _recentTransactions = txs;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Dashboard] Notice: Using fallback data: $e');
+      if (mounted) {
+        setState(() {
+          _accounts = _fallbackAccounts;
+        });
+      }
     }
   }
 
