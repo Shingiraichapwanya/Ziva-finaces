@@ -15,6 +15,18 @@
     the `--base-href` argument provided to `flutter build`.
   -->
   <base href="/Ziva-finaces/">
+  <script>
+    // Dynamically align base href with actual browser URL pathname to handle case variations
+    (function() {
+      var baseEl = document.querySelector('base');
+      if (baseEl && window.location.pathname) {
+        var segments = window.location.pathname.split('/').filter(Boolean);
+        if (segments.length > 0 && segments[0].toLowerCase() === 'ziva-finaces') {
+          baseEl.setAttribute('href', '/' + segments[0] + '/');
+        }
+      }
+    })();
+  </script>
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
