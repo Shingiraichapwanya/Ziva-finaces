@@ -1,0 +1,6 @@
+# Shorebird Configuration for Ziva Finance
+# Enables instant Over-The-Air (OTA) patching to iOS TestFlight and physical devices.
+# Docs: https://docs.shorebird.dev
+
+app_id: 8c9d4b1a-2e7f-4318-9102-zivafinance01
+auto_update: true
